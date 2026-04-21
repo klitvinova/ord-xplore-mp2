@@ -149,9 +149,9 @@
     <!-- Main Layout -->
     <div class="flex flex-1 overflow-hidden">
 
-        <!-- Sidebar: Filters -->
+        <!-- Sidebar: Filters (Responsive Width & Internal Scroll) -->
         <aside
-            class="w-[30rem] lg:w-[36rem] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden p-4 space-y-5 z-20 shadow-md"
+            class="w-full md:w-80 lg:w-[32rem] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-4 space-y-5 z-20 shadow-md"
             onclick="handleBackgroundClick(event)">
 
 
@@ -1307,10 +1307,10 @@
                 return;
             }
 
-            // Helper: build a 2-col tile grid
+            // Helper: build a responsive tile grid
             const renderGrid = (entries) => {
                 const grid = document.createElement('div');
-                grid.className = "grid grid-cols-3 gap-1.5";
+                grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5";
 
                 entries.forEach(d => {
                     const activeKey = FILTERS.feature ? FILTERS.feature.key : null;
@@ -1883,7 +1883,7 @@
 
             const w = container.node().clientWidth;
             const h = container.node().clientHeight;
-            const margin = { top: 10, right: 10, bottom: 40, left: 40 };
+            const margin = { top: 10, right: 10, bottom: 60, left: 50 };
 
             const svg = container.append("svg").attr("width", w).attr("height", h)
                 .on("click", (e) => e.stopPropagation());
@@ -1960,7 +1960,10 @@
                     .attr("transform", `translate(0,${h - margin.bottom})`)
                     .call(xAxis)
                     .selectAll("text")
-                    .style("text-anchor", "middle")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em")
+                    .attr("transform", w < 800 ? "rotate(-45)" : null)
                     .style("font-size", "10px")
                     .style("fill", "#64748b"); // Slate 500
 
