@@ -1886,7 +1886,22 @@
             const margin = { top: 10, right: 10, bottom: 40, left: 40 };
 
             const svg = container.append("svg").attr("width", w).attr("height", h)
-                .on("click", (e) => e.stopPropagation()); // Stop propagation on SVG to prevent background reset if clicking content
+                .on("click", (e) => e.stopPropagation());
+
+            // Add Gradient Definitions
+            const defs = svg.append("defs");
+            const gradient = defs.append("linearGradient")
+                .attr("id", "timeline-gradient")
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "0%").attr("y2", "100%");
+
+            gradient.append("stop")
+                .attr("offset", "0%")
+                .attr("stop-color", "#38bdf8"); // Sky 400
+
+            gradient.append("stop")
+                .attr("offset", "100%")
+                .attr("stop-color", "#0369a1"); // Sky 700
 
             // Binning Data (Smoothing Spikes) - Keep 5 year bins for histogram effect
             const binSize = 5;
@@ -1930,20 +1945,30 @@
 
             const activeColor = '#0ea5e9'; // Always Sky 500
 
-            // 1. Unified Time Bar
+            // 1. Unified Time Bar with Transitions
             bars.append("rect")
                 .attr("x", 0)
-                .attr("y", d => y(d.count))
                 .attr("width", x.bandwidth())
-                .attr("height", d => y(0) - y(d.count))
-                .attr("fill", activeColor)
-                .append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count}`);
+                .attr("fill", "url(#timeline-gradient)")
+                .attr("y", h - margin.bottom) // Start from bottom for transition
+                .attr("height", 0)
+                .transition()
+                .duration(750)
+                .ease(d3.easeCubicOut)
+                .attr("y", d => y(d.count))
+                .attr("height", d => y(0) - y(d.count));
+
+            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count}`);
 
             // X Axis
-            // Only show extensive ticks if valid width
             if (x.bandwidth() > 0) {
+                // Responsive Ticks: calculate interval based on width
+                let tickInterval = 10; // Default (50 years)
+                if (w < 400) tickInterval = 40; // 200 years
+                else if (w < 800) tickInterval = 20; // 100 years
+
                 const xAxis = d3.axisBottom(x)
-                    .tickValues(x.domain().filter((d, i) => i % 10 === 0)) // Show every 10th bin (50 years)
+                    .tickValues(x.domain().filter((d, i) => i % tickInterval === 0))
                     .tickFormat(d => d);
 
                 svg.append("g")
@@ -1951,7 +1976,8 @@
                     .call(xAxis)
                     .selectAll("text")
                     .style("text-anchor", "middle")
-                    .style("font-size", "10px");
+                    .style("font-size", "10px")
+                    .style("fill", "#64748b"); // Slate 500
 
                 // Remove main axis line but keep ticks logic if needed, or keep line
                 svg.select(".domain").remove();
