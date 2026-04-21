@@ -1888,21 +1888,6 @@
             const svg = container.append("svg").attr("width", w).attr("height", h)
                 .on("click", (e) => e.stopPropagation());
 
-            // Add Gradient Definitions
-            const defs = svg.append("defs");
-            const gradient = defs.append("linearGradient")
-                .attr("id", "timeline-gradient")
-                .attr("x1", "0%").attr("y1", "0%")
-                .attr("x2", "0%").attr("y2", "100%");
-
-            gradient.append("stop")
-                .attr("offset", "0%")
-                .attr("stop-color", "#38bdf8"); // Sky 400
-
-            gradient.append("stop")
-                .attr("offset", "100%")
-                .attr("stop-color", "#0369a1"); // Sky 700
-
             // Binning Data (Smoothing Spikes) - Keep 5 year bins for histogram effect
             const binSize = 5;
             const binnedMap = new Map();
@@ -1949,8 +1934,8 @@
             bars.append("rect")
                 .attr("x", 0)
                 .attr("width", x.bandwidth())
-                .attr("fill", "url(#timeline-gradient)")
-                .attr("y", h - margin.bottom) // Start from bottom for transition
+                .attr("fill", "#0ea5e9") // Solid Sky 500
+                .attr("y", h - margin.bottom)
                 .attr("height", 0)
                 .transition()
                 .duration(750)
