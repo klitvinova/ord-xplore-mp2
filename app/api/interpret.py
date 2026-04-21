@@ -82,6 +82,12 @@ def create_app() -> FastAPI:
     app.include_router(search_service.router)
     app.include_router(lookup_service.router)
 
+    # Vercel Fallback: Handle both /api/interpret and /interpret 
+    # to account for different routing behaviors in serverless functions.
+    @app.post("/interpret", response_model=FacetsResponse, tags=["search"])
+    def interpret_root_fallback(req: QueryRequest) -> FacetsResponse:
+        return search_service.interpret(req)
+
     # Health monitoring endpoint
     @app.get("/health")
     def health() -> Dict[str, str]:
@@ -114,7 +120,7 @@ if __name__ == "__main__":
     
     try:
         uvicorn.run(
-            "index:app",
+            "interpret:app",
             host="127.0.0.1",
             port=8000,
             reload=False,  # Disabled to prevent shutdown issues in development
