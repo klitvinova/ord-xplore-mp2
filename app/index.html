@@ -1949,7 +1949,7 @@
             if (x.bandwidth() > 0) {
                 // Responsive Ticks: calculate interval based on width
                 let tickInterval = 10; // Default (50 years)
-                if (w < 400) tickInterval = 40; // 200 years
+                if (w < 500) tickInterval = 40; // 200 years
                 else if (w < 800) tickInterval = 20; // 100 years
 
                 const xAxis = d3.axisBottom(x)
