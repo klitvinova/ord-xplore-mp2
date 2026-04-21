@@ -11,7 +11,7 @@ class OpenAILLM:
     characteristics (historic, manuscript, letter, etc.) using GPT models.
     """
     
-    def __init__(self, api_key: str, model: str = "gpt-4.1-mini") -> None:
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
         """
         Initialize the OpenAI LLM client.
         
@@ -106,12 +106,15 @@ Query: "east asian law texts" → filters to East Asian scripts and law texts"""
             Dictionary containing facets and message in the expected format
         """
         try:
-            response = self.client.responses.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
-                input=f'{self._system_prompt}\n\nUser query: """{user_query}"""'
+                messages=[
+                    {"role": "system", "content": self._system_prompt},
+                    {"role": "user", "content": user_query}
+                ]
             )
             
-            content = (response.output_text or "").strip()
+            content = (response.choices[0].message.content or "").strip()
             return json.loads(content)
             
         except json.JSONDecodeError as e:

@@ -20,9 +20,8 @@ from services.lookup_service import LookupService
 from services.openai_llm import OpenAILLM
 
 # Get API key from environment variable
-API_KEY = os.environ.get("OPENAI_API_KEY")
-if not API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable must be set")
+API_KEY = os.environ.get("OPENAI_API_KEY", "")
+# Note: Verification is deferred to service initialization to prevent startup crashes.
 
 
 @asynccontextmanager
@@ -70,6 +69,9 @@ def create_app() -> FastAPI:
     )
 
     # Initialize LLM client
+    if not API_KEY:
+        print("WARNING: OPENAI_API_KEY not set. Search features will be unavailable.")
+    
     llm_client = OpenAILLM(api_key=API_KEY)
 
     # Initialize services
@@ -112,7 +114,7 @@ if __name__ == "__main__":
     
     try:
         uvicorn.run(
-            "main:app",
+            "interpret:app",
             host="127.0.0.1",
             port=8000,
             reload=False,  # Disabled to prevent shutdown issues in development
