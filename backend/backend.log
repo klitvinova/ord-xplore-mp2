@@ -1,0 +1,58 @@
+INFO:     Will watch for changes in these directories: ['/Users/karinakhusainova/Documents/UZH study/Master project/ord-xplore-mp/misc_fall26/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [75471] using StatReload
+INFO:     Started server process [75487]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:52042 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52105 - "GET /dashboard_v4.html HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52154 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52154 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52161 - "GET /dashboard_v4.html HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52184 - "GET /dashboard_v4.html HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52211 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52211 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52221 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52278 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52292 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52306 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52323 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52323 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52323 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52323 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52328 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52330 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52340 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52344 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52349 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52366 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52629 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52629 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52629 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52886 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52886 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52890 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52890 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52897 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52900 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52900 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52903 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52909 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53055 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53058 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53350 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53350 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54314 - "OPTIONS /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54314 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54317 - "POST /api/interpret HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54390 - "POST /api/interpret HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'schemas.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [75487]
+INFO:     Started server process [3883]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

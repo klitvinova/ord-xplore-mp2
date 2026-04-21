@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Editions Explorer v4.2 (Compact)</title>
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <!-- D3 -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <style>
+        #map {
+            background: #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+            z-index: 10;
+        }
+
+        .chart-container {
+            height: 200px;
+        }
+
+        .topic-keywords {
+            display: none;
+        }
+
+        .topic-item:hover .topic-keywords {
+            display: block;
+        }
+
+        /* Marker Cluster Custom Styling */
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+            background-color: rgba(14, 165, 233, 0.4) !important;
+        }
+
+        .marker-cluster-small div,
+        .marker-cluster-medium div,
+        .marker-cluster-large div {
+            background-color: rgba(14, 165, 233, 0.8) !important;
+            color: white !important;
+            font-weight: bold !important;
+        }
+
+        .bar {
+            fill: #0ea5e9;
+            /* Sky 500 */
+            transition: fill 0.2s;
+            cursor: pointer;
+        }
+
+        .bar:hover {
+            fill: #0369a1;
+            /* Sky 700 */
+        }
+
+        .bar.active {
+            fill: #f59e0b;
+            /* Amber 500 */
+        }
+
+        .brush .selection {
+            fill: #f59e0b;
+            fill-opacity: 0.3;
+            stroke: #f59e0b;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 flex flex-col h-screen overflow-hidden">
+
+    <!-- Header -->
+    <header
+        class="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center shadow-sm z-[1000] relative shrink-0">
+        <div class="flex-1 flex items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
+                <p class="text-sm text-gray-500" id="statsline">Loading data...</p>
+            </div>
+
+            <!-- Turn on/off View Mode -->
+            <div class="bg-gray-100 p-1 rounded-md flex text-sm font-medium ml-6 shrink-0">
+                <button id="btn-doc" onclick="setMode('document')"
+                    class="px-3 py-1.5 rounded shadow bg-white text-gray-800 transition-all">Documents</button>
+                <button id="btn-ed" onclick="setMode('edition')"
+                    class="px-3 py-1.5 rounded text-gray-500 hover:text-gray-700 transition-all">Editions</button>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="flex-1 max-w-4xl ml-6 relative">
+                <div class="flex relative w-full shadow-sm rounded">
+                    <div class="relative flex-grow">
+                        <input type="text" id="searchInput"
+                            class="w-full px-4 py-2 pr-8 border border-gray-300 border-r-0 rounded-l focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            placeholder="Ask: 'Letters from 1850 in French'..."
+                            onkeydown="if(event.key === 'Enter') handleSearch()"
+                            oninput="document.getElementById('clearSearch').classList.toggle('hidden', !this.value)">
+                        <!-- Clear button -->
+                        <button id="clearSearch"
+                            class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none focus:outline-none"
+                            onclick="clearSearch()" title="Clear search">&times;</button>
+                    </div>
+                    <button onclick="handleSearch()"
+                        class="px-4 py-2 bg-gray-600 text-white font-semibold rounded-r hover:bg-gray-700 transition-colors text-sm whitespace-nowrap border border-l-0 border-gray-600 shrink-0">
+                        Search
+                    </button>
+                </div>
+                <div id="searchStatus" class="absolute top-[calc(100%+4px)] left-0 w-full text-xs text-gray-800 hidden z-[100] bg-white px-3 py-2 rounded shadow-lg border border-gray-300">Searching...
+                </div>
+            </div>
+        </div>
+
+        <button onclick="resetFilters()"
+            class="text-sm text-gray-500 hover:text-gray-700 hover:underline ml-4 whitespace-nowrap">Reset
+            Filters</button>
+
+        </div>
+
+        <div class="ml-6 space-x-4 flex items-center">
+            <a href="transparency.html" target="_blank"
+                class="text-sm font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+                Methodology
+            </a>
+        </div>
+    </header>
+
+    <!-- Search Message Banner (outside header to avoid stacking context issues) -->
+    <div id="searchMessage" class="fixed top-16 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-[9998] hidden">
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900 shadow-lg text-center">
+            <span id="searchMessageText"></span>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Sidebar: Filters -->
+        <aside
+            class="w-[30rem] lg:w-[36rem] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden p-4 space-y-5 z-20 shadow-md"
+            onclick="handleBackgroundClick(event)">
+
+
+
+            <!-- Characteristics Chart -->
+            <div class="flex flex-col">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-sm font-semibold text-gray-700 uppercase">Characteristics</h3>
+                    <button onclick="showAddFilterModal()"
+                        class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded hover:bg-gray-200 border border-gray-300 focus:outline-none focus:ring-0 shadow-sm">+
+                        Add Tag</button>
+                </div>
+                <div id="featureChart" class="overflow-y-auto border border-gray-100 rounded bg-white p-1"></div>
+            </div>
+
+
+
+            <!-- Language Chart -->
+            <div class="relative shrink-0">
+                <h3 class="text-xs font-semibold text-gray-700 uppercase mb-1">Languages</h3>
+                <!-- Embedded Legend -->
+                <div class="absolute top-0 right-0 flex items-center gap-2 text-[10px] bg-white/80 p-0.5 rounded">
+                    <div class="flex items-center gap-1">
+                        <span class="w-2 h-2 bg-sky-500 rounded-sm"></span>
+                        <span class="text-gray-500">Original</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="w-2 h-2 bg-sky-200 rounded-sm"></span>
+                        <span class="text-gray-500">Inferred</span>
+                    </div>
+                    <a href="transparency.html" target="_blank" class="text-gray-400 hover:text-blue-600"
+                        title="Methodology">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                            stroke="currentColor" class="w-3 h-3">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                        </svg>
+                    </a>
+                </div>
+                <div id="langChart" class="chart-container h-56"></div>
+            </div>
+
+
+
+
+
+
+            <!-- Topics (Flexible but constrained) -->
+            <div class="mt-auto flex flex-col min-h-0 shrink-1 overflow-hidden">
+                <h3 class="text-xs font-semibold text-gray-700 uppercase mb-1">Topics</h3>
+                <div id="topicChart" class="flex-1 overflow-y-auto border border-gray-100 rounded p-1 text-xs"></div>
+            </div>
+
+            <!-- Editions in View (Edition mode only) -->
+            <div id="editionListPanel" class="hidden flex-col min-h-0">
+                <button id="editionListToggle" onclick="toggleEditionListPanel()"
+                    class="flex items-center justify-between w-full text-left group">
+                    <h3 class="text-sm font-semibold text-gray-700 uppercase">Editions in View
+                        <span id="editionListCount" class="ml-1 text-gray-400 font-normal normal-case text-xs"></span>
+                    </h3>
+                    <svg id="editionListChevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                        stroke-width="2" stroke="currentColor"
+                        class="w-4 h-4 text-gray-400 transition-transform duration-200">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                </button>
+                <div id="editionListBody"
+                    class="hidden mt-2 flex-1 overflow-y-auto max-h-48 border border-gray-100 rounded p-2 text-xs space-y-0.5">
+                </div>
+            </div>
+
+        </aside>
+
+
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col min-w-0 bg-gray-100">
+
+            <!-- Map Section -->
+            <div class="flex-1 relative">
+                <div id="map" class="w-full h-full absolute inset-0"></div>
+
+                <!-- Top Cities Overlay -->
+                <div
+                    class="absolute top-4 right-4 w-64 max-h-[60%] bg-white/95 backdrop-blur shadow-xl rounded-lg flex flex-col z-[1000] p-4 border border-gray-200">
+                    <h3 class="text-sm font-bold text-gray-800 uppercase mb-2 border-b pb-2">Places</h3>
+                    <div id="cityList" class="overflow-y-auto flex-1 text-xs pr-1"></div>
+                </div>
+
+                <!-- Map Legend -->
+                <div class="absolute bottom-6 right-6 bg-white/90 backdrop-blur p-3 rounded shadow-lg text-xs z-[1000] min-w-[200px]">
+                    <h4 class="font-bold mb-2">Map Data Layer</h4>
+                    <div class="flex bg-gray-100 p-0.5 rounded-md text-[10px] font-medium mb-3">
+                        <button id="btn-geo-cre" onclick="setGeoSource('creation')" class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
+                        <button id="btn-geo-pub" onclick="setGeoSource('publication')" class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
+                        <button id="btn-geo-con" onclick="setGeoSource('contextual')" class="flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                    </div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#0369a1] opacity-80 block"></span> <span id="legend-label">Doc Count</span></div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full border border-blue-600 block"></span> Cities</div>
+                </div>
+            </div>
+
+            <!-- Bottom Panel: Timeline & Cities -->
+            <div class="h-[22rem] bg-white flex shrink-0 border-t border-gray-200 shadow-lg relative z-20"
+                onclick="handleBackgroundClick(event)">
+                <!-- Timeline -->
+                <div class="flex-1 p-4 border-r border-gray-200 flex flex-col min-h-0">
+                    <div class="flex items-center justify-between mb-2 shrink-0">
+                        <h3 class="text-sm font-semibold text-gray-700 uppercase">TIMELINE</h3>
+                        <div class="flex items-center gap-4">
+                            <!-- Segmented Toggle -->
+                            <div class="flex bg-gray-100 p-0.5 rounded-md text-[10px] font-medium items-center">
+                                <button id="btn-date-cre" onclick="setDateSource('creation')" class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
+                                <button id="btn-date-pub" onclick="setDateSource('publication')" class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
+                                <button id="btn-date-con" onclick="setDateSource('contextual')" class="px-3 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                            </div>
+                            <a href="transparency.html" target="_blank" class="text-gray-400 hover:text-blue-600" title="Methodology">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                    <div id="timeChart" class="w-full flex-1 pb-6 min-h-0"></div>
+                </div>
+
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Dynamic Filter Modal -->
+    <div id="filterModal" class="hidden fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center"
+        onclick="closeAddFilterModal()">
+        <div class="bg-white rounded-lg shadow-xl w-[26rem] max-h-[80vh] flex flex-col p-4"
+            onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center border-b pb-2 mb-3">
+                <h3 class="font-bold text-gray-700">Add Custom Tag Filter</h3>
+                <button onclick="closeAddFilterModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <!-- Custom filter name -->
+            <label class="text-xs font-medium text-gray-500 mb-1">Filter name</label>
+            <input type="text" id="filterCustomName" placeholder="e.g. Letters &amp; Verse"
+                class="w-full border rounded px-3 py-1.5 mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <!-- Tag search -->
+            <label class="text-xs font-medium text-gray-500 mb-1">Select one or more tags</label>
+            <input type="text" id="tagSearch" placeholder="Search tags..."
+                class="w-full border rounded px-3 py-1.5 mb-2 text-sm" onkeyup="renderTagList()">
+            <!-- Tag list (checkboxes) -->
+            <div id="tagList" class="flex-1 overflow-y-auto space-y-0.5 text-sm mb-3"></div>
+            <!-- Footer -->
+            <div class="flex justify-end gap-2 pt-2 border-t">
+                <button onclick="closeAddFilterModal()"
+                    class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">Cancel</button>
+                <button onclick="confirmAddFilter()"
+                    class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Add Filter</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Dynamic Filter Logic ---
+        function showAddFilterModal() {
+            document.getElementById('filterModal').classList.remove('hidden');
+            document.getElementById('filterCustomName').value = '';
+            document.getElementById('tagSearch').value = '';
+            renderTagList();
+        }
+        function closeAddFilterModal() {
+            document.getElementById('filterModal').classList.add('hidden');
+        }
+
+        function confirmAddFilter() {
+            // Collect checked tags
+            const checked = [...document.querySelectorAll('#tagList input[type=checkbox]:checked')];
+            if (checked.length === 0) return;
+            const tags = checked.map(cb => cb.value);
+
+            // Determine filter display name
+            let name = (document.getElementById('filterCustomName').value || '').trim();
+            if (!name) name = tags.length === 1 ? tags[0] : tags.join(' + ');
+
+            // Sanitise name as a key (keep raw name for display)
+            const key = '__custom__' + name;
+
+            // Skip if already present
+            if (DYNAMIC_FEATURES.has(key)) { closeAddFilterModal(); return; }
+            DYNAMIC_FEATURES.add(key);
+
+            // Inject into RAW_DATA: doc qualifies if ANY of the selected tags is present
+            tags.forEach(tag => {
+                const docsWithTag = new Set(TAG_PRESENCE[tag] || []);
+                RAW_DATA.forEach(d => {
+                    let match = docsWithTag.has(d.id);
+                    if (!match) {
+                        const textId = d.id.split('/').pop();
+                        if (docsWithTag.has(textId)) match = true;
+                    }
+                    if (match) d.features[key] = true;
+                });
+            });
+
+            // Store metadata so it can be displayed/removed nicely
+            DYNAMIC_FILTER_META[key] = { label: name, tags };
+
+            closeAddFilterModal();
+            updateDashboard();
+        }
+
+        function removeDynamicFeature(key) {
+            if (!DYNAMIC_FEATURES.has(key)) return;
+            DYNAMIC_FEATURES.delete(key);
+            delete DYNAMIC_FILTER_META[key];
+
+            if (FILTERS.feature && FILTERS.feature.key === key) {
+                FILTERS.feature = null;
+            }
+
+            RAW_DATA.forEach(d => { delete d.features[key]; });
+            updateDashboard();
+        }
+
+        function renderTagList() {
+            const list = document.getElementById('tagList');
+            const searchInput = document.getElementById('tagSearch');
+            const search = searchInput ? searchInput.value.toLowerCase() : '';
+            list.innerHTML = '';
+
+            if (!TAG_PRESENCE) return;
+
+            Object.keys(TAG_PRESENCE).sort().forEach(tag => {
+                if (search && !tag.toLowerCase().includes(search)) return;
+                const count = TAG_PRESENCE[tag].length;
+
+                const label = document.createElement('label');
+                label.className = 'flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer';
+                label.innerHTML =
+                    `<input type="checkbox" value="${tag}" class="accent-gray-600 shrink-0">`
+                    + `<span class="font-mono text-xs text-gray-700 flex-1">&lt;${tag}&gt;</span>`
+                    + `<span class="text-xs text-gray-400">${count.toLocaleString()}</span>`;
+                list.appendChild(label);
+            });
+        }
+    </script>
+    <script>
+        // State
+        let RAW_DATA = [];
+        let FILTERED_DATA = [];
+        let VIEW_MODE = 'document'; // 'document' | 'edition'
+        let FILTERS = {
+            lang: null,
+            country: null,
+            city: null, // New City Filter
+            yearRange: null,
+            gender: null,
+            doc_type: null,
+            feature: null, // New Filter
+            includeInferredDate: true,
+            dateSource: 'contextual', // 'creation', 'publication' or 'contextual'
+            geoSource: 'contextual', // 'creation', 'publication' or 'contextual'
+            topicId: null
+        };
+        let EDITION_METADATA = {}; // Map<EditionID, Array<Features>>
+        let EDITION_TOPICS = {};
+        let DOCUMENT_TOPICS = {};
+        let TOPIC_HIERARCHY = [];
+        let TAG_PRESENCE = {}; // Loaded dynamically
+        let DYNAMIC_FEATURES = new Set(); // Tags/compound filters added by user
+        let DYNAMIC_FILTER_META = {}; // key -> { label, tags } for compound filters
+        let CITY_COUNTRY_MAPPING = {}; // City → Country name, loaded from city_country_mapping.json
+        let SHOW_CONTEXTUAL = true; // Toggle for Contextual date bars
+
+        let cityLayer;
+        let map;
+        let VALID_COUNTRIES = new Set();
+        let CITY_COORDS = {};
+        let CITY_UNIFICATION = {};
+        let cityClusters; 
+
+        // --- Helpers ---
+        function parseYears(val) {
+            if (!val) return [];
+            val = val.toString().trim();
+
+            // 1. Handle comma-separated lists (e.g. "1850, 1852")
+            if (val.includes(',')) {
+                return val.split(',').map(p => parseYears(p)).flat();
+            }
+
+            // 2. Handle ranges "from — to" (em-dash), en-dash, hyphen
+            const parts = val.split(/[—–-]/);
+            if (parts.length === 2) {
+                const start = parseInt(parts[0]);
+                const end = parseInt(parts[1]);
+                if (!isNaN(start) && !isNaN(end)) {
+                    const range = [];
+                    for (let y = start; y <= end; y++) range.push(y);
+                    return range;
+                }
+            }
+            const single = parseInt(val);
+            return isNaN(single) ? [] : [single];
+        }
+
+        // Load Data
+        const t = Date.now();
+        Promise.all([
+            d3.json(`dashboard_data.json?v=${t}`),
+            d3.json(`dashboard_editions.json?v=${t}`),
+            d3.json(`city_coordinates_v2.json?v=${t}`).catch(() => ({})),
+            d3.json(`topics_hierarchy.json?v=${t}`),
+            d3.json(`edition_topics.json?v=${t}`),
+            d3.json(`document_topics.json?v=${t}`).catch(() => ({})),
+            d3.json(`tag_presence.json?v=${t}`).catch(() => ({})),
+            d3.json(`city_country_mapping.json?v=${t}`).catch(() => ({})),
+            d3.json(`city_unification.json?v=${t}`).catch(() => ({}))
+        ]).then(([docsData, edsMeta, geoData, topicRes, editionTopics, docTopics, tagPresence, geoMapping, cityUnification]) => {
+
+            // Extract valid countries from GeoJSON
+            if (geoData && geoData.features) {
+                geoData.features.forEach(f => {
+                    if (f.properties && f.properties.name) {
+                        VALID_COUNTRIES.add(f.properties.name);
+                    }
+                });
+            }
+            console.log("Valid Countries loaded:", VALID_COUNTRIES.size);
+            CITY_COORDS = geoData || {};
+
+            EDITION_TOPICS = editionTopics;
+            DOCUMENT_TOPICS = docTopics;
+            TOPIC_HIERARCHY = topicRes;
+            TAG_PRESENCE = tagPresence;
+            EDITION_METADATA = edsMeta;
+            CITY_COUNTRY_MAPPING = geoMapping || {};
+            CITY_UNIFICATION = cityUnification || {};
+
+            // DEBUG: Check mapping
+            console.log("Mapping Check 'Zürich':", CITY_COUNTRY_MAPPING["Zürich"]);
+            console.log("Mapping Check 'Zurich':", CITY_COUNTRY_MAPPING["Zurich"]);
+
+            // Helper to ensure array
+            function toArray(val) {
+                if (!val) return [];
+                if (Array.isArray(val)) return val;
+
+                // Handle "BC" explicitly (e.g. "500 BC" -> -500)
+                if (typeof val === 'string' && /bc/i.test(val)) {
+                    const num = parseInt(val.replace(/[^0-9]/g, ''));
+                    if (!isNaN(num)) return [-num];
+                }
+                if (typeof val === 'string' && val.includes('-')) {
+                    const parts = val.split('-');
+                    const s = parseInt(parts[0]);
+                    const e = parseInt(parts[1]);
+                    if (!isNaN(s) && !isNaN(e)) {
+                        const r = [];
+                        for (let i = s; i <= e; i++) r.push(i);
+                        return r;
+                    }
+                }
+                return [val];
+            }
+
+            const COUNTRY_MAP = {
+                "AT": "Austria", "DE": "Germany", "CH": "Switzerland", "FR": "France",
+                "IT": "Italy", "BE": "Belgium", "NL": "Netherlands", "GB": "United Kingdom",
+                "UK": "United Kingdom", "US": "United States of America", "USA": "United States of America",
+                "ES": "Spain", "PT": "Portugal", "PL": "Poland", "CZ": "Czech Republic",
+                "HU": "Hungary", "SI": "Slovenia", "HR": "Croatia", "GR": "Greece",
+                "RU": "Russia", "JP": "Japan", "CN": "China", "TR": "Turkey",
+                "EG": "Egypt", "MX": "Mexico", "SK": "Slovakia",
+                "Nebraska": "United States of America",
+                "Massachusetts": "United States of America",
+                "California": "United States of America",
+                "New York": "United States of America",
+                "Pennsylvania": "United States of America",
+                "Virginia": "United States of America",
+                "Illinois": "United States of America",
+                "Ohio": "United States of America"
+            };
+            const countryNames = Object.values(COUNTRY_MAP);
+
+            // Helper to clean place strings
+            function resolvePlace(p) {
+                if (!p) return { city: null, country: null };
+
+                // Skip known TEI label strings and "Unknown Place" indicators
+                const PLACE_BLOCKLIST = new Set([
+                    "Findspot.", "Findspot", "findspot",
+                    "Unknown", "unknown", "unspecified",
+                    "o.O.", "o.O", "o. O.", "[o.O.]", "[o. O.]",
+                    "s.l.", "sine loco", "no place", "Unknown."
+                ]);
+                if (PLACE_BLOCKLIST.has(p.trim())) return { city: null, country: null };
+
+                // Strip surrounding noise: brackets, parens, quotes, trailing punctuation
+                p = p.trim().replace(/^[\(\[\\'"]+|[\)\]\\'":,;.\?]+$/g, '').trim();
+
+                let candidateCity = null;
+                let candidateCountry = null;
+
+                // Check if it's "City, Country" or "City, State"
+                if (p.includes(',')) {
+                    const parts = p.split(',').map(s => s.trim());
+                    // Assume last part is Country or State
+                    const potentialCountry = parts[parts.length - 1];
+                    const potentialCity = parts[0]; // Take first part as city
+
+                    if (countryNames.includes(potentialCountry)) {
+                        candidateCountry = potentialCountry;
+                    } else if (COUNTRY_MAP[potentialCountry]) {
+                        candidateCountry = COUNTRY_MAP[potentialCountry];
+                    }
+
+                    candidateCity = potentialCity;
+                } else {
+                    // Single string
+                    if (countryNames.includes(p)) {
+                        candidateCountry = p;
+                    } else if (COUNTRY_MAP[p]) {
+                        candidateCountry = COUNTRY_MAP[p];
+                    } else {
+                        candidateCity = p;
+                    }
+                }
+
+                const resolved = { city: candidateCity, country: candidateCountry };
+                if (resolved.city) {
+                    resolved.city = CITY_UNIFICATION[resolved.city] || resolved.city;
+                }
+                return resolved;
+            }
+
+            // Process RAW_DATA from Document Metadata
+            // Map optimized data to Dashboard format
+            RAW_DATA = docsData.map(d => {
+                // Geo Resolution
+                function extractGeo(geoArray) {
+                    let country = null;
+                    let city = null;
+                    for (const p of (geoArray || [])) {
+                        const resolved = resolvePlace(p);
+                        if (resolved.country && !country) country = resolved.country;
+                        if (resolved.city && !city) city = resolved.city;
+                        if (country && city) break;
+                    }
+                    return { country, city };
+                }
+                
+                const geoCre = extractGeo(d.geo_cre);
+                const geoPub = extractGeo(d.geo_pub);
+                const geoCtx = extractGeo(d.geo_con);
+
+                // Ensure features object exists
+                const f = d.features || {};
+
+                return {
+                    id: d.id,
+                    filename: d.id.split('/').pop(),
+                    edition: d.ed_id,
+                    title: d.title,
+                    lang: d.lang || "unknown",
+                    langInferred: d.lang_inf || false,
+                    
+                    geo_creation: geoCre,
+                    geo_publication: geoPub,
+                    geo_contextual: geoCtx,
+                    
+                    get country() { return this['geo_' + FILTERS.geoSource].country; },
+                    get city() { return this['geo_' + FILTERS.geoSource].city; },
+                    countryInferred: false,
+                    cityInferred: false,
+                    
+                    years_creation: toArray(d.date_cre),
+                    years_publication: toArray(d.date_pub),
+                    years_contextual: toArray(d.date_con),
+                    
+                    get years() { return this['years_' + FILTERS.dateSource]; },
+                    get contextualYears() { return []; }, // Unused now but kept for compatibility
+                    
+                    yearInferred: d.date_pub_inf || false,
+                    contextualInferred: false,
+                    features: f,
+                    // extra for filters
+                    gender: null,
+                    doc_type: null
+                };
+            });
+
+            FILTERED_DATA = RAW_DATA;
+
+            // COMPUTE TOTAL COUNTS FOR TOPICS (for stable sorting)
+            // If Document Mode, use document counts. If Edition Mode, use edition counts.
+            // Since we want a stable global hierarchy order, let's sum BOTH or pick one.
+            // Let's us Document Counts as primary if available, else editions.
+            const topicTotalCounts = new Map();
+
+            // Use Doc Topics for Total Counts if loaded
+            if (Object.keys(DOCUMENT_TOPICS).length > 0) {
+                Object.values(DOCUMENT_TOPICS).forEach(tInfo => {
+                    const tid = tInfo.topic_id;
+                    if (tid) topicTotalCounts.set(tid, (topicTotalCounts.get(tid) || 0) + 1);
+                });
+            } else {
+                // Fallback to Edition Topics
+                Object.values(EDITION_TOPICS).forEach(edTopics => {
+                    for (const [topicId, count] of Object.entries(edTopics)) {
+                        if (count > 0) {
+                            topicTotalCounts.set(topicId, (topicTotalCounts.get(topicId) || 0) + count);
+                        }
+                    }
+                });
+            }
+
+            // Attach total_count to each topic in hierarchy
+            function attachCounts(topics) {
+                topics.forEach(t => {
+                    t.total_count = topicTotalCounts.get(t.id) || 0;
+                    if (t.subtopics && t.subtopics.length > 0) {
+                        attachCounts(t.subtopics);
+                    }
+                });
+            }
+            attachCounts(TOPIC_HIERARCHY);
+
+            initMap();
+            renderTopicHierarchy(topicRes);
+            updateDashboard();
+        }).catch(err => {
+            console.error(err);
+            document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data.<br>${err}</div>`;
+        });
+
+        // --- Core Logic ---
+
+        function setMode(mode) {
+            VIEW_MODE = mode;
+            // Update buttons
+            const btnDoc = document.getElementById('btn-doc');
+            const btnEd = document.getElementById('btn-ed');
+            const activeClass = "bg-white shadow text-gray-800";
+            const inactiveClass = "text-gray-500 hover:text-gray-700";
+
+            if (mode === 'document') {
+                btnDoc.className = "px-3 py-1.5 rounded transition-all text-sm " + activeClass;
+                btnEd.className = "px-3 py-1.5 rounded transition-all text-sm " + inactiveClass;
+                document.getElementById('legend-label').innerText = "Doc Count";
+            } else {
+                btnEd.className = "px-3 py-1.5 rounded transition-all text-sm " + activeClass;
+                btnDoc.className = "px-3 py-1.5 rounded transition-all text-sm " + inactiveClass;
+                document.getElementById('legend-label').innerText = "Edition Count";
+            }
+            updateDashboard();
+        }
+
+        function setDateSource(source) {
+            FILTERS.dateSource = source;
+            FILTERS.yearRange = null; // Reset year filter when switching axes
+            document.getElementById('btn-date-cre').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-date-pub').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-date-con').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            
+            const btnId = `btn-date-${source.substring(0, 3)}`;
+            document.getElementById(btnId).className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
+            
+            updateDashboard();
+        }
+
+        function setGeoSource(source) {
+            FILTERS.geoSource = source;
+            document.getElementById('btn-geo-cre').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-geo-pub').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-geo-con').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
+            
+            const btnId = `btn-geo-${source.substring(0, 3)}`;
+            document.getElementById(btnId).className = "flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all";
+            
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+
+            // Function to check filters
+            const check = (d, skip = null) => {
+                if (skip !== 'lang' && FILTERS.lang && d.lang !== FILTERS.lang) return false;
+                if (skip !== 'country' && FILTERS.country && d.country !== FILTERS.country) return false;
+                if (skip !== 'city' && FILTERS.city && d.city !== FILTERS.city) return false;
+                if (skip !== 'gender' && FILTERS.gender && (!d.gender || !d.gender.includes(FILTERS.gender))) return false;
+                if (skip !== 'doc_type' && FILTERS.doc_type && d.doc_type !== FILTERS.doc_type) return false;
+
+                // Feature Filter (Dual State; also supports compound multi-tag custom filters)
+                if (skip !== 'feature' && FILTERS.feature) {
+                    const { key, value } = FILTERS.feature;
+                    const isTrue = d.features && d.features[key];
+                    // If we want True, and it's not True -> False
+                    if (value === true && !isTrue) return false;
+                    // If we want False, and it IS True -> False
+                    if (value === false && isTrue) return false;
+                }
+
+                // Topic Filter
+                if (skip !== 'topic' && FILTERS.topicId) {
+                    const tid = FILTERS.topicId;
+                    if (VIEW_MODE === 'document') {
+                        // Document Mode: Check DOCUMENT_TOPICS
+                        const docTopic = DOCUMENT_TOPICS[d.filename];
+
+                        // For simplicity: Check Direct Match
+                        if (!docTopic || docTopic.topic_id !== tid) return false;
+                    } else {
+                        // Edition Mode: Check EDITION_TOPICS
+                        const topics = EDITION_TOPICS[d.edition];
+                        if (!topics || !topics[tid]) return false;
+                    }
+                }
+
+                // Year Range Filter (Brush)
+                if (skip !== 'year' && FILTERS.yearRange) {
+                    const [start, end] = FILTERS.yearRange;
+                    if (!d.years || d.years.length === 0) return false;
+                    const hasOverlap = d.years.some(y => y >= start && y <= end);
+                    if (!hasOverlap) return false;
+                }
+
+                return true;
+            };
+
+            // Main Data (Applies ALL filters)
+            FILTERED_DATA = RAW_DATA.filter(d => check(d));
+
+            // Lang Data (Applies all EXCEPT Lang) - FOR LANG CHART ONLY
+            const LANG_DATA = RAW_DATA.filter(d => check(d, 'lang'));
+
+            // Feature Data (Applies all EXCEPT Feature) - FOR FEATURE CHART ONLY
+            const FEATURE_DATA = RAW_DATA.filter(d => check(d, 'feature'));
+
+
+            // --- Aggregation Helper ---
+            const mode = VIEW_MODE;
+            const initStatObj = () => ({ total: 0, confirmed: 0, inferred: 0 });
+
+            // We need 3 Stats Objects: Main, Lang, Feature
+
+            function computeStats(dataSet, options = {}) {
+                const s = {
+                    langs: {},
+                    countries: {},
+                    cities: {},
+                    genders: {},
+                    years: {},
+                    features: {},
+                    editions: new Set(),
+                    is_letter: 0
+                };
+
+                // Temp Sets for Edition Mode
+                const edSets = {
+                    langs: {},
+                    countries: {},
+                    cities: {},
+                    years: {},
+                    features: {},
+                    is_letter: new Set()
+                };
+
+                // Processing Loop
+                dataSet.forEach(d => {
+                    s.editions.add(d.edition);
+
+                    if (mode === 'document') {
+                        // Document Mode aggregation
+                        // Language (Only if we want it)
+                        if (!options.skipLang) {
+                            if (!s.langs[d.lang]) s.langs[d.lang] = initStatObj();
+                            s.langs[d.lang].total++;
+                            if (d.langInferred) s.langs[d.lang].inferred++;
+                            else s.langs[d.lang].confirmed++;
+                        }
+
+                        // Country
+                        if (!options.skipGeo && d.country) {
+                            if (!s.countries[d.country]) s.countries[d.country] = initStatObj();
+                            s.countries[d.country].total++;
+                            if (d.countryInferred) s.countries[d.country].inferred++;
+                            else s.countries[d.country].confirmed++;
+                        }
+                        // City
+                        if (!options.skipGeo && d.city) {
+                            if (!s.cities[d.city]) s.cities[d.city] = initStatObj();
+                            s.cities[d.city].total++;
+                            if (d.cityInferred) s.cities[d.city].inferred++;
+                            else s.cities[d.city].confirmed++;
+                        }
+                        // Features
+                        if (!options.skipFeatures) {
+                            Object.keys(d.features).forEach(f => {
+                                s.features[f] = (s.features[f] || 0) + 1;
+                            });
+                            if (d.features['is_letter']) s.is_letter++;
+                        }
+                        // Years
+                        if (!options.skipTime) {
+                            const yearsArr = d['years_' + FILTERS.dateSource];
+                            if (yearsArr && yearsArr.length > 0) {
+                                yearsArr.forEach(y => {
+                                    if (!s.years[y]) s.years[y] = { count: 0 };
+                                    s.years[y].count++;
+                                });
+                            }
+                        }
+
+                    } else {
+                        // EDITION MODE (Using Sets)
+                        // Language
+                        if (!options.skipLang) {
+                            if (!edSets.langs[d.lang]) edSets.langs[d.lang] = { confirmed: new Set(), inferred: new Set() };
+                            if (d.langInferred) edSets.langs[d.lang].inferred.add(d.edition);
+                            else edSets.langs[d.lang].confirmed.add(d.edition);
+                        }
+                        // Country
+                        if (!options.skipGeo && d.country) {
+                            if (!edSets.countries[d.country]) edSets.countries[d.country] = { confirmed: new Set(), inferred: new Set() };
+                            if (d.countryInferred) edSets.countries[d.country].inferred.add(d.edition);
+                            else edSets.countries[d.country].confirmed.add(d.edition);
+                        }
+                        // City
+                        if (!options.skipGeo && d.city) {
+                            if (!edSets.cities[d.city]) edSets.cities[d.city] = { confirmed: new Set(), inferred: new Set() };
+                            if (d.cityInferred) edSets.cities[d.city].inferred.add(d.edition);
+                            else edSets.cities[d.city].confirmed.add(d.edition);
+                        }
+                        // Years
+                        if (!options.skipTime) {
+                            const yearsArr = d['years_' + FILTERS.dateSource];
+                            if (yearsArr) {
+                                yearsArr.forEach(y => {
+                                    if (!edSets.years[y]) edSets.years[y] = new Set();
+                                    edSets.years[y].add(d.edition);
+                                });
+                            }
+                        }
+                        // Features
+                        if (!options.skipFeatures) {
+                            Object.keys(d.features).forEach(f => {
+                                addToSet(edSets.features, f, d.edition);
+                                if (f === 'is_letter') edSets.is_letter.add(d.edition);
+                            });
+                        }
+                    }
+                }); // End forEach
+
+                // Finalize Edition Sets if needed
+                if (mode !== 'document') {
+                    const finalize = (source, target) => {
+                        for (let k in source) {
+                            const c = source[k].confirmed;
+                            const i = source[k].inferred;
+                            const all = new Set([...c, ...i]);
+                            target[k] = { total: all.size, confirmed: c.size, inferred: i.size };
+                        }
+                    };
+                    if (!options.skipLang) finalize(edSets.langs, s.langs);
+                    if (!options.skipGeo) {
+                        finalize(edSets.countries, s.countries);
+                        finalize(edSets.cities, s.cities);
+                    }
+                    if (!options.skipTime) {
+                        for (let k in edSets.years) {
+                            s.years[k] = {
+                                count: edSets.years[k].size
+                            };
+                        }
+                    }
+
+                    if (!options.skipFeatures) {
+                        for (let k in edSets.features) s.features[k] = edSets.features[k].size;
+                        s.is_letter = edSets.is_letter.size;
+                    }
+                }
+
+                return s;
+            }
+
+            // 1. Calculate Main Stats (Everything but Langs/Features is strict)
+            const mainStats = computeStats(FILTERED_DATA, { skipLang: true, skipFeatures: true });
+
+            // 2. Calculate Lang Stats (Use LANG_DATA)
+            const langStats = computeStats(LANG_DATA, { skipGeo: true, skipTime: true, skipFeatures: true });
+
+            // 3. Calculate Feature Stats (Use FEATURE_DATA)
+            const featureStats = computeStats(FEATURE_DATA, { skipGeo: true, skipTime: true, skipLang: true });
+
+
+            // Merge for rendering
+            // We use mainStats for everything effectively, except we inject the langs from langStats
+            mainStats.langs = langStats.langs;
+            mainStats.features = featureStats.features;
+            // Note: computeStats for features returns simple object map in .features,
+            // but for Langs it returns the complex {total, confirmed...} object.
+            // renderFeatureChart expects simple object. computeStats returns simple object loop (lines 483 / 553+578)
+            // Wait, computeStats line 483: s.features[f] = number. Correct.
+
+            // --- Calculate Topics (Using Filtered Data) ---
+            const activeTopics = new Map();
+
+            if (VIEW_MODE === 'document') {
+                // Iterate Filtered Documents to Count Topics
+                FILTERED_DATA.forEach(d => {
+                    const tInfo = DOCUMENT_TOPICS[d.filename];
+
+                    if (tInfo) {
+                        const tid = tInfo.topic_id;
+                        if (tid) {
+                            activeTopics.set(tid, (activeTopics.get(tid) || 0) + 1);
+                        }
+                    }
+                });
+            } else {
+                // Edition Mode
+                mainStats.editions.forEach(edId => {
+                    if (EDITION_TOPICS[edId]) {
+                        for (const [tId, count] of Object.entries(EDITION_TOPICS[edId])) {
+                            if (count > 0) {
+                                activeTopics.set(tId, (activeTopics.get(tId) || 0) + 1);
+                            }
+                        }
+                    }
+                });
+            }
+
+            renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
+
+            // 3. Render
+            renderStatsLine(FILTERED_DATA.length, mainStats.editions.size);
+            renderLangChart(mainStats.langs); // This now contains the "Wide" distribution
+
+            renderCityList(mainStats.cities);
+            const totalCount = (VIEW_MODE === 'document') ? FEATURE_DATA.length : featureStats.editions.size;
+            renderFeatureChart(mainStats.features, totalCount);
+            renderTimeChart(mainStats.years);
+
+            updateMap(mainStats.cities);
+
+            renderEditionList(mainStats.editions);
+
+        }
+
+        function toggleInferredDate(checked) {
+            FILTERS.includeInferredDate = checked;
+            updateDashboard();
+        }
+
+        function toggleContextual() {
+            SHOW_CONTEXTUAL = !SHOW_CONTEXTUAL;
+            // Update buttons
+            const btnCtx = document.getElementById('btn-ctx');
+            const activeClass = "opacity-100";
+            const inactiveClass = "opacity-50";
+
+            if (SHOW_CONTEXTUAL) {
+                btnCtx.classList.remove('opacity-50');
+                btnCtx.classList.add('opacity-100');
+            } else {
+                btnCtx.classList.remove('opacity-100');
+                btnCtx.classList.add('opacity-50');
+            }
+            updateDashboard();
+        }
+        function addToSet(map, key, val) {
+            if (!map[key]) map[key] = new Set();
+            map[key].add(val);
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = "";
+            document.getElementById('searchStatus').classList.add('hidden');
+            FILTERS = { lang: null, country: null, city: null, yearRange: null, gender: null, doc_type: null, feature: null, topicId: null, ids: null, includeInferredDate: true, dateSource: 'publication' };
+            updateDashboard();
+        }
+
+        // --- Edition List Panel ---
+        let EDITION_LIST_OPEN = false;
+
+        function toggleEditionListPanel() {
+            EDITION_LIST_OPEN = !EDITION_LIST_OPEN;
+            const body = document.getElementById('editionListBody');
+            const chevron = document.getElementById('editionListChevron');
+            if (EDITION_LIST_OPEN) {
+                body.classList.remove('hidden');
+                chevron.style.transform = 'rotate(180deg)';
+            } else {
+                body.classList.add('hidden');
+                chevron.style.transform = '';
+            }
+        }
+
+        function renderEditionList(editionSet) {
+            const panel = document.getElementById('editionListPanel');
+            const body = document.getElementById('editionListBody');
+            const countEl = document.getElementById('editionListCount');
+
+            // Only show in edition mode
+            if (VIEW_MODE !== 'edition') {
+                panel.classList.add('hidden');
+                panel.classList.remove('flex');
+                return;
+            }
+            panel.classList.remove('hidden');
+            panel.classList.add('flex');
+
+            const ids = [...editionSet].sort();
+            countEl.textContent = `(${ids.length})`;
+
+            body.innerHTML = '';
+            ids.forEach(id => {
+                // Format slug: underscores -> spaces, title-case
+                const label = id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const row = document.createElement('div');
+                row.className = 'px-1 py-0.5 rounded text-gray-700 hover:bg-gray-50 leading-snug';
+                row.textContent = label;
+                row.title = id; // raw ID as tooltip
+                body.appendChild(row);
+            });
+        }
+
+        // --- SEARCH INTEGRATION ---
+        function clearSearch() {
+            const input = document.getElementById('searchInput');
+            input.value = '';
+            document.getElementById('clearSearch').classList.add('hidden');
+            document.getElementById('searchMessage').classList.add('hidden');
+            document.getElementById('searchStatus').classList.add('hidden');
+            // If search applied a filter, reset it
+            if (FILTERS.search) {
+                FILTERS.search = null;
+                updateDashboard();
+            }
+            input.focus();
+        }
+
+        async function handleSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const statusEl = document.getElementById('searchStatus');
+
+            if (!query) {
+                return;
+            }
+
+            statusEl.textContent = "Searching...";
+            statusEl.classList.remove('hidden');
+
+            try {
+                const res = await fetch('http://127.0.0.1:8000/api/interpret', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!res.ok) throw new Error("API Error");
+
+                const data = await res.json();
+                console.log("Search response:", data.data);
+
+                applyBackendFacets(data.data.facets);
+
+                // Show LLM message where "Done." used to appear
+                const msg = data.data && data.data.message;
+                statusEl.textContent = msg || "Done.";
+                statusEl.classList.remove('hidden');
+                
+                // Only auto-hide if it's just "Done.". Keep LLM messages permanent until cleared.
+                if (!msg) {
+                    setTimeout(() => statusEl.classList.add('hidden'), 2000);
+                }
+
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = "Error searching. See console.";
+                statusEl.classList.remove('hidden');
+            }
+        }
+
+        function applyBackendFacets(facets) {
+            // Reset filters logic
+            FILTERS.country = null;
+            FILTERS.city = null;
+            FILTERS.lang = null;
+            FILTERS.yearRange = null;
+            FILTERS.feature = null; // Reset binary characteristics
+
+            // Mapping from API facet names to dashboard feature keys
+            const BINARY_FACET_MAPPING = {
+                'medieval_manuscript': 'is_medieval_manuscript', 
+                'manuscript': 'is_manuscript',
+                'letter': 'is_letter',
+                'political_letter': 'is_political_letter',
+                'verse': 'contains_verse',
+                'direct_speech': 'contains_direct_speech',
+                'linguistic_annotation': 'contains_linguistic_annotation',
+                'theatre': 'contains_theatre',
+                'east_asian_scripts': 'contains_east_asian_scripts',
+                'japanese_scripts': 'contains_japanese_scripts',
+                'political_protocols': 'contains_political_protocols',
+                'dictionary': 'contains_dictionary',
+                'inscriptions': 'contains_inscriptions',
+                'law_texts': 'contains_law_texts',
+                'newspaper_articles': 'contains_newspaper_articles',
+                'diary': 'contains_diary'
+            };
+
+            // 1. Time
+            if (facets.time && facets.time.length > 0) {
+                const years = facets.time[0].values.map(y => parseInt(y)).filter(n => !isNaN(n));
+                if (years.length > 0) {
+                    if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
+                    else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                }
+            }
+
+            // 2. Geography
+            if (facets.geography && facets.geography.length > 0) {
+                const val = facets.geography[0].values[0];
+                FILTERS.country = val; // Direct assignment
+            }
+
+            // 3. Language
+            if (facets.language && facets.language.length > 0) {
+                const langMap = { "french": "fr", "english": "en", "german": "de", "latin": "la" };
+                const rawVal = facets.language[0].values[0].toLowerCase();
+                FILTERS.lang = langMap[rawVal] || rawVal;
+            }
+
+            // 4. Binary Characteristics
+            // Apply the first "true" binary facet found (since dashboard supports single feature filter)
+            for (const [apiFacetName, dashboardKey] of Object.entries(BINARY_FACET_MAPPING)) {
+                if (facets[apiFacetName] && facets[apiFacetName].length > 0) {
+                    const facetData = facets[apiFacetName][0];
+                    if (facetData && facetData.values && facetData.values.length > 0) {
+                        const value = facetData.values[0];
+                        if (value && value.toLowerCase() === 'true') {
+                            console.log(`Applied binary facet: ${apiFacetName} -> ${dashboardKey}`);
+                            FILTERS.feature = { key: dashboardKey, value: true };
+                            break; // Apply only the first one found
+                        }
+                    }
+                }
+            }
+
+            updateDashboard();
+        }
+
+        // --- Render Functions ---
+
+        // Helper for Feature Interaction (Chart & Widgets)
+        function toggleFeature(featKey) {
+            const isActive = FILTERS.feature && FILTERS.feature.key === featKey && FILTERS.feature.value === true;
+            FILTERS.feature = isActive ? null : { key: featKey, value: true };
+            updateDashboard();
+        }
+
+        function toggleCity(cityName) {
+            FILTERS.city = FILTERS.city === cityName ? null : cityName;
+            updateDashboard();
+        }
+
+        // Keys that should never appear in the feature chart (removed/unused facets)
+        const SKIP_FEATURE_KEYS = new Set(['is_historic']);
+
+        // Keys that belong to each group
+        const DOC_TYPE_KEYS = new Set([
+            'is_medieval_manuscript', 'is_manuscript', 'is_letter', 'is_political_letter'
+        ]);
+        const CONTENT_KEYS = new Set([
+            'contains_verse', 'contains_direct_speech', 'contains_linguistic_annotation',
+            'contains_theatre', 'contains_east_asian_scripts', 'contains_japanese_scripts',
+            'contains_political_protocols', 'contains_dictionary', 'contains_inscriptions',
+            'contains_law_texts', 'contains_newspaper_articles', 'contains_diary'
+        ]);
+
+        // Explicit label overrides for keys whose auto-generated labels are unclear
+        const FEATURE_LABELS = {
+            'is_manuscript': 'Medieval Manuscript',
+            'is_medieval_manuscript': 'Medieval Manuscript (strict)',
+        };
+
+        function renderFeatureChart(features, totalCount) {
+            const container = document.getElementById('featureChart');
+            container.innerHTML = "";
+
+            // Map all entries and split into groups
+            const allEntries = Object.entries(features)
+                .filter(([k]) => !SKIP_FEATURE_KEYS.has(k))
+                .map(([k, v]) => {
+                    const meta = DYNAMIC_FILTER_META[k];
+                    const label = meta ? meta.label
+                        : (FEATURE_LABELS[k] || k.replace(/_/g, ' ').replace(/\bcontains\b/g, '').replace(/\bis\b/g, '').trim());
+                    return { key: k, value: v, label };
+                });
+
+            const docTypeEntries = allEntries.filter(d => !DYNAMIC_FEATURES.has(d.key) && DOC_TYPE_KEYS.has(d.key)).sort((a, b) => b.value - a.value);
+            const contentEntries = allEntries.filter(d => !DYNAMIC_FEATURES.has(d.key) && CONTENT_KEYS.has(d.key)).sort((a, b) => b.value - a.value);
+            const otherEntries = allEntries.filter(d => !DYNAMIC_FEATURES.has(d.key) && !DOC_TYPE_KEYS.has(d.key) && !CONTENT_KEYS.has(d.key)).sort((a, b) => b.value - a.value);
+            const dynamicEntries = allEntries.filter(d => DYNAMIC_FEATURES.has(d.key)).sort((a, b) => b.value - a.value);
+
+            const totalStandard = docTypeEntries.length + contentEntries.length + otherEntries.length;
+            if (totalStandard === 0 && dynamicEntries.length === 0) {
+                container.innerHTML = "<div class='text-gray-400 text-xs p-2'>No features available</div>";
+                return;
+            }
+
+            // Helper: build a 2-col tile grid
+            const renderGrid = (entries) => {
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-3 gap-1.5";
+
+                entries.forEach(d => {
+                    const activeKey = FILTERS.feature ? FILTERS.feature.key : null;
+                    const activeValue = FILTERS.feature ? FILTERS.feature.value : null;
+                    const isKeyActive = activeKey === d.key;
+
+                    const trueCount = d.value;
+                    const falseCount = totalCount - trueCount;
+
+                    const tile = document.createElement('div');
+                    tile.className = "flex flex-col rounded border border-gray-200 bg-white overflow-hidden shadow-sm select-none";
+
+                    const header = document.createElement('div');
+                    header.className = "bg-gray-50 px-2 py-1 border-b border-gray-200 text-[10px] font-bold uppercase text-gray-700 flex justify-between items-center";
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = "truncate";
+                    labelSpan.innerText = d.label;
+                    labelSpan.title = d.label;
+                    header.appendChild(labelSpan);
+
+                    if (DYNAMIC_FEATURES.has(d.key)) {
+                        const removeBtn = document.createElement('span');
+                        removeBtn.className = "ml-1 text-gray-400 hover:text-red-600 cursor-pointer font-normal";
+                        removeBtn.innerHTML = "&times;";
+                        removeBtn.title = "Remove Tag";
+                        removeBtn.onclick = (e) => { e.stopPropagation(); removeDynamicFeature(d.key); };
+                        header.appendChild(removeBtn);
+                    }
+
+                    tile.appendChild(header);
+
+                    const body = document.createElement('div');
+                    body.className = "flex h-7";
+
+                    const colTrue = document.createElement('div');
+                    const isTrueActive = isKeyActive && activeValue === true;
+                    colTrue.className = "flex-1 flex flex-col justify-center items-center cursor-pointer transition-colors border-r border-gray-100 "
+                        + (isTrueActive ? "bg-amber-100 text-amber-900 font-bold" : "hover:bg-sky-50 text-sky-600");
+                    colTrue.innerHTML = `<span style="font-size:9px" class="opacity-60 uppercase">Y</span><span style="font-size:11px">${trueCount.toLocaleString()}</span>`;
+                    colTrue.onclick = (e) => {
+                        e.stopPropagation();
+                        FILTERS.feature = isTrueActive ? null : { key: d.key, value: true };
+                        updateDashboard();
+                    };
+
+                    const colFalse = document.createElement('div');
+                    const isFalseActive = isKeyActive && activeValue === false;
+                    colFalse.className = "flex-1 flex flex-col justify-center items-center cursor-pointer transition-colors "
+                        + (isFalseActive ? "bg-amber-100 text-amber-900 font-bold" : "hover:bg-gray-100 text-gray-400");
+                    colFalse.innerHTML = `<span style="font-size:9px" class="opacity-60 uppercase">N</span><span style="font-size:11px">${falseCount.toLocaleString()}</span>`;
+                    colFalse.onclick = (e) => {
+                        e.stopPropagation();
+                        FILTERS.feature = isFalseActive ? null : { key: d.key, value: false };
+                        updateDashboard();
+                    };
+
+                    body.appendChild(colTrue);
+                    body.appendChild(colFalse);
+                    tile.appendChild(body);
+
+                    const bar = document.createElement('div');
+                    bar.className = "h-1 w-full bg-gray-100 flex";
+                    const filler = document.createElement('div');
+                    filler.style.width = `${totalCount > 0 ? (trueCount / totalCount) * 100 : 0}%`;
+                    filler.className = isTrueActive ? "bg-amber-500" : (isFalseActive ? "bg-gray-300" : "bg-sky-500");
+                    bar.appendChild(filler);
+                    tile.appendChild(bar);
+
+                    grid.appendChild(tile);
+                });
+                return grid;
+            };
+
+            // Helper: render a bar-row section (compact, one line per feature)
+            const renderBarRows = (entries) => {
+                const maxVal = Math.max(...entries.map(d => d.value), 1);
+                entries.forEach(d => {
+                    const activeKey = FILTERS.feature ? FILTERS.feature.key : null;
+                    const activeValue = FILTERS.feature ? FILTERS.feature.value : null;
+                    const isKeyActive = activeKey === d.key;
+                    const isTrueActive = isKeyActive && activeValue === true;
+                    const isFalseActive = isKeyActive && activeValue === false;
+                    const trueCount = d.value;
+                    const falseCount = totalCount - trueCount;
+                    const pct = totalCount > 0 ? (trueCount / totalCount) * 100 : 0;
+
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center gap-1.5 px-1 py-px rounded cursor-pointer select-none hover:bg-gray-50 '
+                        + (isTrueActive ? 'bg-amber-50 ring-1 ring-amber-300' : isFalseActive ? 'bg-red-50 ring-1 ring-red-200' : '');
+                    row.title = `TRUE: ${trueCount.toLocaleString()}  |  FALSE: ${falseCount.toLocaleString()}`;
+
+                    // Label
+                    const label = document.createElement('span');
+                    label.className = 'w-36 shrink-0 truncate ' + (isTrueActive ? 'text-amber-800 font-semibold' : 'text-gray-600');
+                    label.style.fontSize = '12px';
+                    label.textContent = d.label;
+                    row.appendChild(label);
+
+                    // Bar track
+                    const track = document.createElement('div');
+                    track.className = 'flex-1 h-2 rounded bg-gray-100 relative overflow-hidden';
+                    const fill = document.createElement('div');
+                    fill.className = 'h-full rounded ' + (isTrueActive ? 'bg-amber-400' : isFalseActive ? 'bg-gray-300' : 'bg-sky-400');
+                    fill.style.width = `${pct}%`;
+                    track.appendChild(fill);
+                    row.appendChild(track);
+
+                    // Count
+                    const count = document.createElement('span');
+                    count.className = 'w-8 text-right shrink-0 ' + (isTrueActive ? 'text-amber-800 font-semibold' : 'text-gray-400');
+                    count.style.fontSize = '11px';
+                    count.textContent = trueCount.toLocaleString();
+                    row.appendChild(count);
+
+                    // Remove button (custom tags only)
+                    if (DYNAMIC_FEATURES.has(d.key)) {
+                        const rm = document.createElement('span');
+                        rm.className = 'text-gray-300 hover:text-red-500 text-xs leading-none';
+                        rm.innerHTML = '&times;';
+                        rm.title = 'Remove';
+                        rm.onclick = (e) => { e.stopPropagation(); removeDynamicFeature(d.key); };
+                        row.appendChild(rm);
+                    }
+
+                    // Click: toggle TRUE / FALSE / off on label/bar, separate FALSE click removed for simplicity
+                    row.onclick = (e) => {
+                        e.stopPropagation();
+                        if (isTrueActive) FILTERS.feature = null;
+                        else FILTERS.feature = { key: d.key, value: true };
+                        updateDashboard();
+                    };
+
+                    container.appendChild(row);
+                });
+            };
+
+            // Helper: render a labelled section
+            const renderSection = (title, entries, extraClass = '') => {
+                if (entries.length === 0) return;
+                const h = document.createElement('h4');
+                h.className = `text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-0.5 mb-0.5 mt-2 ${extraClass}`;
+                h.textContent = title;
+                container.appendChild(h);
+                const g = renderGrid(entries);
+                g.classList.add('mb-2');
+                container.appendChild(g);
+            };
+
+            renderSection('Document Types', docTypeEntries);
+            renderSection('Content Characteristics', contentEntries, 'border-t pt-1');
+            renderSection('Other', otherEntries, 'border-t pt-1');
+
+            // Custom tags
+            if (dynamicEntries.length > 0) {
+                renderSection('Custom Tags', dynamicEntries, 'border-t pt-1');
+            }
+        }
+
+        // renderTypeChart REMOVED
+
+
+        function renderTopicHierarchy(data, activeCountsMap) {
+            const container = d3.select("#topicChart");
+            container.html("");
+
+            if (!data || data.length === 0) {
+                container.html("<div class='text-gray-400'>No topics available</div>");
+                return;
+            }
+
+            // Prepare Data: Add current count (total_count already attached at load)
+            let listData = data.map(t => ({
+                ...t,
+                current_count: activeCountsMap ? (activeCountsMap.get(t.id) || 0) : 0
+            }));
+
+            // Sort: Active Topic First, then Count
+            listData.sort((a, b) => {
+                if (a.id === FILTERS.topicId) return -1;
+                if (b.id === FILTERS.topicId) return 1;
+                return b.current_count - a.current_count;
+            });
+
+            const maxVal = d3.max(listData, d => d.current_count) || 1;
+
+            // Recursive function to render tree
+            function renderNode(nodes, parentEl, level = 0) {
+                const ul = parentEl.append("ul").attr("class", level === 0 ? "space-y-0.5" : "pl-3 border-l border-gray-200 mt-1 space-y-0.5 hidden");
+
+                const items = ul.selectAll("li").data(nodes).enter().append("li")
+                    .attr("class", "topic-item");
+
+                const row = items.append("div")
+                    .attr("class", d => {
+                        const isActive = FILTERS.topicId === d.id;
+                        const baseClass = "flex items-center gap-2 cursor-pointer p-1 rounded transition-colors text-xs ";
+                        return baseClass + (isActive ? "bg-amber-100 border border-amber-400 shadow-sm" : "hover:bg-gray-100 border border-transparent");
+                    })
+                    .on("click", function (e, d) {
+                        e.stopPropagation();
+                        // Filter Logic
+                        FILTERS.topicId = (FILTERS.topicId === d.id) ? null : d.id;
+                        updateDashboard();
+                    });
+
+                // Arrow (for subtopics if any, though flat largely)
+                row.append("span")
+                    .attr("class", "arrow text-[10px] text-gray-400 w-3")
+                    .text("");
+
+                // Content Container
+                const content = row.append("div").attr("class", "flex-1 min-w-0 group flex items-center gap-2");
+
+                // Name Display
+                const nameDiv = content.append("div")
+                    .attr("class", d => "font-medium truncate flex-1 " + (FILTERS.topicId === d.id ? "text-amber-900" : "text-gray-700"))
+                    .text(d => {
+                        // Use stored name if "meaningful", else construct from words
+                        if (d.name && d.name.length > 3 && !d.name.includes(",")) return d.name;
+
+                        // Fix for char-based tokens (e.g. "H, O, F")
+                        if (d.words && d.words.length > 0 && d.words[0].length === 1) {
+                            if (d.name.includes(",") && d.name.length < 20) {
+                                const fullText = d.words.join("").trim();
+                                const parts = fullText.split(/\s+/).filter(s => s.length > 0);
+                                return parts.slice(0, 4).join(" ");
+                            }
+                        }
+                        return d.name;
+                    })
+                    .attr("title", d => {
+                        const words = d.words ? d.words.slice(0, 15).join(", ") : "No keywords";
+                        return `Words: ${words}`;
+                    });
+
+                // Edit Button (Visible on Hover)
+                const editBtn = content.append("button")
+                    .attr("class", "opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 px-1")
+                    .html(`<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-3"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>`)
+                    .on("click", function (e, d) {
+                        e.stopPropagation();
+                        startEditing(d, this.previousElementSibling, this);
+                    });
+
+                // Count Bar
+                row.append("div")
+                    .attr("class", d => "h-1.5 rounded ml-2 " + (FILTERS.topicId === d.id ? "bg-amber-500" : "bg-sky-300"))
+                    .style("width", d => `${(d.current_count / maxVal) * 50}px`)
+                    .style("min-width", d => d.current_count > 0 ? "2px" : "0px");
+
+                row.append("span")
+                    .attr("class", "text-[9px] text-gray-500 ml-1 min-w-[20px] text-right")
+                    .text(d => d.current_count.toLocaleString());
+
+                // Keywords line (shown on hover via CSS)
+                items.each(function (d) {
+                    if (!d.words || d.words.length === 0) return;
+                    const words = d.words.slice(0, 10).join(', ');
+                    d3.select(this).append('div')
+                        .attr('class', 'topic-keywords pl-4 pb-0.5 text-[9px] text-gray-400 leading-tight truncate')
+                        .attr('title', d.words.join(', '))
+                        .text(words);
+                });
+
+                // Render children
+                items.each(function (d) {
+                    if (d.subtopics && d.subtopics.length > 0) {
+                        renderNode(d.subtopics, d3.select(this), level + 1);
+                    }
+                });
+            }
+
+            renderNode(listData, container);
+        }
+
+        // --- Editing Logic ---
+        function startEditing(dataObj, labelEl, btnEl) {
+            const currentText = labelEl.textContent;
+            const parent = labelEl.parentNode;
+
+            // Hide Label & Btn
+            labelEl.style.display = "none";
+            btnEl.style.display = "none";
+
+            // Create Input
+            const form = document.createElement("div");
+            form.className = "flex items-center gap-1 flex-1";
+            form.innerHTML = `
+                <input type="text" class="flex-1 min-w-0 text-xs border border-blue-400 rounded px-1 py-0.5" value="${currentText.replace(/"/g, '&quot;')}">
+                <button class="text-green-600 hover:text-green-800"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-3"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg></button>
+                <button class="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-3"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
+            `;
+
+            // Inputs
+            const input = form.querySelector('input');
+            const saveBtn = form.querySelector('button:first-of-type');
+            const cancelBtn = form.querySelector('button:last-of-type');
+
+            // Stop propagation on clicks inside form
+            form.onclick = (e) => e.stopPropagation();
+
+            function save() {
+                const newName = input.value.trim();
+                if (newName && newName !== currentText) {
+                    // Log for debugging
+                    console.log(`Renaming topic ${dataObj.id} from "${currentText}" to "${newName}"`);
+
+                    // Update Global Store (Recursively find and update)
+                    const updateGlobal = (nodes) => {
+                        for (let t of nodes) {
+                            if (t.id === dataObj.id) {
+                                t.name = newName;
+                                console.log(`Successfully updated topic ${t.id} to "${newName}"`);
+                                return true;
+                            }
+                            if (t.subtopics && t.subtopics.length > 0) {
+                                if (updateGlobal(t.subtopics)) return true;
+                            }
+                        }
+                        return false;
+                    };
+
+                    if (updateGlobal(TOPIC_HIERARCHY)) {
+                        // Re-render
+                        updateDashboard();
+                    } else {
+                        console.error(`Failed to find topic ${dataObj.id} in hierarchy`);
+                        alert("Error: Topic not found");
+                        cancel();
+                    }
+                } else {
+                    cancel();
+                }
+            }
+
+            function cancel() {
+                form.remove();
+                labelEl.style.display = "";
+                btnEl.style.display = "";
+            }
+
+            saveBtn.onclick = save;
+            cancelBtn.onclick = cancel;
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') save();
+                if (e.key === 'Escape') cancel();
+            };
+
+            parent.insertBefore(form, labelEl);
+            input.focus();
+        }
+
+
+
+        const LANGUAGE_NAMES = {
+            "en": "English", "de": "German", "fr": "French", "la": "Latin",
+            "it": "Italian", "es": "Spanish", "ja": "Japanese", "zh": "Chinese",
+            "nl": "Dutch", "ru": "Russian", "el": "Greek", "he": "Hebrew",
+            "pt": "Portuguese", "sv": "Swedish", "tr": "Turkish", "ar": "Arabic",
+            "da": "Danish", "fi": "Finnish", "no": "Norwegian", "pl": "Polish",
+            "cs": "Czech", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian",
+            "uk": "Ukrainian", "hr": "Croatian", "sr": "Serbian", "sl": "Slovenian",
+            "sk": "Slovak", "lt": "Lithuanian", "lv": "Latvian", "et": "Estonian",
+            "hbo": "Ancient Hebrew", "arc": "Aramaic", "grc": "Ancient Greek",
+            "af": "Afrikaans", "zho": "Chinese", "gr": "Greek",
+            "ca": "Catalan",
+            "unknown": "Unknown"
+        };
+
+        function renderStatsLine(docs, eds) {
+            document.getElementById('statsline').innerHTML = `<span class="font-bold text-gray-900">${docs.toLocaleString()}</span> Documents | <span class="font-bold text-gray-900">${eds}</span> Editions`;
+        }
+        function renderLangChart(langs) {
+            const data = Object.entries(langs)
+                .map(([k, v]) => ({
+                    key: k,
+                    label: LANGUAGE_NAMES[k] || k,
+                    value: v.total,
+                    confirmed: v.confirmed,
+                    inferred: v.inferred
+                }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 15);
+            drawBarChart("#langChart", data, (d) => {
+                FILTERS.lang = FILTERS.lang === d.key ? null : d.key;
+                updateDashboard();
+            }, FILTERS.lang, true);
+        }
+        function renderTimeChart(yearMap) {
+            const data = Object.entries(yearMap)
+                .map(([y, v]) => ({
+                    year: +y,
+                    count: v.count || 0
+                }))
+                .filter(d => !isNaN(d.year)) // Filter bad years
+                .sort((a, b) => a.year - b.year);
+            drawTimeColumnChart("#timeChart", data);
+        }
+
+        // --- City List ---
+        function renderCityList(cities) {
+            const list = document.getElementById('cityList');
+            list.innerHTML = "";
+
+            const entries = Object.entries(cities)
+                .map(([name, val]) => ({ name, ...val }))
+                .filter(c => CITY_COORDS[c.name]) // Hide non-geocoded items from side facet
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 50);
+
+            if (entries.length === 0) return;
+            const maxVal = entries[0].total;
+
+            const ul = document.createElement('ul');
+            ul.className = "space-y-1";
+            list.appendChild(ul);
+
+            entries.forEach(c => {
+                const isActive = FILTERS.city === c.name;
+                const baseClass = "flex items-center gap-2 cursor-pointer p-1 rounded transition-colors text-xs ";
+                const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm" : "hover:bg-gray-100 border border-transparent";
+
+                const li = document.createElement("li");
+                const row = document.createElement("div");
+                row.className = baseClass + colorClass;
+                row.onclick = (e) => { e.stopPropagation(); toggleCity(c.name); };
+
+
+                // Name
+                const nameDiv = document.createElement("div");
+                nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isActive ? "text-amber-900" : "text-gray-700");
+                nameDiv.innerText = c.name;
+                row.appendChild(nameDiv);
+
+                // Single-color bar (matches Topics style)
+                const bar = document.createElement("div");
+                bar.className = "h-1.5 rounded ml-2 " + (isActive ? "bg-amber-500" : "bg-sky-300");
+                bar.style.width = `${(c.total / maxVal) * 50}px`;
+                bar.style.minWidth = c.total > 0 ? "2px" : "0px";
+                row.appendChild(bar);
+
+                // Count
+                const countSpan = document.createElement("span");
+                countSpan.className = "text-[9px] text-gray-500 ml-1 min-w-[20px] text-right";
+                countSpan.innerText = c.total.toLocaleString();
+                row.appendChild(countSpan);
+
+                li.appendChild(row);
+                ul.appendChild(li);
+            });
+        }
+
+        // --- Map Logic ---
+        function initMap() {
+            map = L.map('map').setView([48, 10], 4);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+            cityClusters = L.markerClusterGroup();
+            map.addLayer(cityClusters);
+            
+            // Fix for map visibility in flex containers
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+        }
+        function updateMap(cityStats) {
+            if (!cityClusters) return;
+            cityClusters.clearLayers();
+
+            const entries = Object.entries(cityStats);
+            let maxCount = 0;
+            for (let i = 0; i < entries.length; i++) {
+                if (entries[i][1].total > maxCount) maxCount = entries[i][1].total;
+            }
+
+            for (let i = 0; i < entries.length; i++) {
+                const cityName = entries[i][0];
+                const stats = entries[i][1];
+                const count = stats.total;
+
+                if (count === 0) continue;
+
+                const coords = CITY_COORDS[cityName];
+                if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') continue;
+
+                let radius = 6;
+
+                const marker = L.circleMarker([coords.lat, coords.lon], {
+                    radius: radius,
+                    fillColor: '#0ea5e9',
+                    color: '#0369a1',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+
+                let tooltip = `<b>${cityName}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
+                if (stats.inferred > 0) {
+                    tooltip += `<br/><span class="text-yellow-600 text-[10px]">(${stats.confirmed} confirmed, ${stats.inferred} inferred)</span>`;
+                }
+
+                marker.bindTooltip(tooltip);
+                marker.on('click', () => { toggleCity(cityName); });
+                cityClusters.addLayer(marker);
+            }
+        }
+
+        function handleBackgroundClick(e) {
+            // Avoid resetting if clicking on interactive elements that might have been missed by stopPropagation
+            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.cursor-pointer')) return;
+            resetFilters();
+        }
+
+        // --- D3 Helpers ---
+        function drawBarChart(selector, data, onClick, activeKey, useLabel = false) {
+            const container = d3.select(selector); container.html("");
+            const w = container.node().clientWidth;
+            const h = container.node().clientHeight || 150;
+            if (w === 0) return;
+
+            const svg = container.append("svg").attr("width", w).attr("height", h);
+            const labelWidth = 150;
+            const x = d3.scaleLinear().domain([0, d3.max(data, d => d.value)]).range([0, w - labelWidth - 40]);
+            const y = d3.scaleBand().domain(data.map(d => d.key)).range([0, h]).padding(0.2);
+
+            const g = svg.append("g");
+
+            // Draw Bars (Grouped for Stacking)
+            const bars = g.selectAll(".bar-group").data(data).enter().append("g")
+                .attr("transform", d => `translate(${labelWidth}, ${y(d.key)})`)
+                .style("cursor", "pointer")
+                .on("click", (e, d) => {
+                    e.stopPropagation();
+                    onClick(d);
+                });
+
+            // 1. Confirmed Part (or Total)
+            bars.append("rect")
+                .attr("x", 0)
+                .attr("height", y.bandwidth())
+                .attr("width", d => x(d.confirmed !== undefined ? d.confirmed : d.value))
+                .attr("fill", d => d.key === activeKey ? "#f59e0b" : "#0ea5e9"); // Amber or Sky 500
+
+            // 2. Inferred Part (Stacked)
+            bars.each(function (d) {
+                if (d.inferred && d.inferred > 0) {
+                    d3.select(this).append("rect")
+                        .attr("x", x(d.confirmed))
+                        .attr("height", y.bandwidth())
+                        .attr("width", x(d.inferred))
+                        .attr("fill", d.key === activeKey ? "#fbbf24" : "#bae6fd") // Lighter Amber or Sky 200
+                        .append("title").text(`Inferred: ${d.inferred.toLocaleString()}`);
+                }
+            });
+
+            // Labels
+            g.selectAll("text.label").data(data).enter().append("text")
+                .attr("x", labelWidth - 5).attr("y", d => y(d.key) + y.bandwidth() / 2 + 4).attr("text-anchor", "end")
+                .text(d => useLabel ? d.label : d.key)
+                .style("font-size", "12px").style("fill", "#4b5563");
+
+            // Values
+            g.selectAll("text.val").data(data).enter().append("text")
+                .attr("x", d => labelWidth + x(d.value) + 5).attr("y", d => y(d.key) + y.bandwidth() / 2 + 4)
+                .text(d => d.value.toLocaleString()).style("font-size", "11px").style("fill", "#9ca3af");
+        }
+        function drawTimeColumnChart(selector, data) {
+            const container = d3.select(selector); container.html("");
+            if (!data.length) return;
+
+            const w = container.node().clientWidth;
+            const h = container.node().clientHeight;
+            const margin = { top: 10, right: 10, bottom: 40, left: 40 };
+
+            const svg = container.append("svg").attr("width", w).attr("height", h)
+                .on("click", (e) => e.stopPropagation()); // Stop propagation on SVG to prevent background reset if clicking content
+
+            // Binning Data (Smoothing Spikes) - Keep 5 year bins for histogram effect
+            const binSize = 5;
+            const binnedMap = new Map();
+            data.forEach(d => {
+                const bin = Math.floor(d.year / binSize) * binSize;
+                if (!binnedMap.has(bin)) binnedMap.set(bin, { count: 0 });
+                const b = binnedMap.get(bin);
+                b.count += d.count;
+            });
+
+            // Fill gaps
+            if (binnedMap.size > 0) {
+                const years = Array.from(binnedMap.keys());
+                const minYear = Math.min(...years);
+                const maxYear = Math.max(...years);
+                for (let y = minYear; y <= maxYear; y += binSize) {
+                    if (!binnedMap.has(y)) binnedMap.set(y, { count: 0 });
+                }
+            }
+
+            const binnedData = Array.from(binnedMap, ([year, v]) => ({
+                year,
+                count: v.count
+            })).sort((a, b) => a.year - b.year);
+
+            const x = d3.scaleBand()
+                .domain(binnedData.map(d => d.year))
+                .range([margin.left, w - margin.right])
+                .padding(0.1);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(binnedData, d => d.count)]).nice()
+                .range([h - margin.bottom, margin.top]);
+
+            // Bar Groups
+            const bars = svg.selectAll(".bar-group")
+                .data(binnedData)
+                .enter().append("g")
+                .attr("transform", d => `translate(${x(d.year)}, 0)`);
+
+            const activeColor = '#0ea5e9'; // Always Sky 500
+
+            // 1. Unified Time Bar
+            bars.append("rect")
+                .attr("x", 0)
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => y(0) - y(d.count))
+                .attr("fill", activeColor)
+                .append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count}`);
+
+            // X Axis
+            // Only show extensive ticks if valid width
+            if (x.bandwidth() > 0) {
+                const xAxis = d3.axisBottom(x)
+                    .tickValues(x.domain().filter((d, i) => i % 10 === 0)) // Show every 10th bin (50 years)
+                    .tickFormat(d => d);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${h - margin.bottom})`)
+                    .call(xAxis)
+                    .selectAll("text")
+                    .style("text-anchor", "middle")
+                    .style("font-size", "10px");
+
+                // Remove main axis line but keep ticks logic if needed, or keep line
+                svg.select(".domain").remove();
+            }
+
+            // Y Axis
+            const yAxis = d3.axisLeft(y)
+                .ticks(5)
+                .tickFormat(d3.format("d")); // Integer format
+
+            svg.append("g")
+                .attr("transform", `translate(${margin.left},0)`)
+                .call(yAxis)
+                .call(g => g.select(".domain").remove())
+                .selectAll("text")
+                .style("font-size", "10px");
+
+            // Brushing
+            const brush = d3.brushX()
+                .extent([[margin.left, margin.top], [w - margin.right, h - margin.bottom]])
+                .on("end", brushed);
+
+            const gBrush = svg.append("g")
+                .attr("class", "brush")
+                .call(brush);
+
+            // Restore Selection if Active
+            if (FILTERS.yearRange) {
+                const startBin = Math.floor(FILTERS.yearRange[0] / 5) * 5;
+                // Assuming max year of range also aligns or we cover it
+                const endBinRaw = FILTERS.yearRange[1];
+                // We want to cover the bin containing endBinRaw.
+                // If range is [1850, 1854], endBinRaw=1854. Bin is 1850.
+                // We need to map bins.
+                // Simple approach: min bin and max bin.
+                const endBin = Math.floor(endBinRaw / 5) * 5;
+
+                const x0 = x(startBin);
+                const x1 = x(endBin);
+
+                if (x0 !== undefined && x1 !== undefined) {
+                    // x1 is start of endBin. We want full endBin width.
+                    const x1Final = x1 + x.bandwidth();
+                    // Avoid infinite loop by clearing handler locally or checking event?
+                    // brush.move triggers 'start', 'brush', 'end'. 
+                    // Our brushed handler checks 'sourceEvent'. safe.
+                    gBrush.call(brush.move, [x0, x1Final]);
+                }
+            }
+
+            function brushed({ selection, sourceEvent }) {
+                if (!sourceEvent) return; // Ignore programmatic moves
+
+                if (!selection) {
+                    FILTERS.yearRange = null;
+                } else {
+                    const [x0, x1] = selection;
+                    // Find bins strictly/mostly inside
+                    const selected = binnedData.filter(d => {
+                        const bx = x(d.year);
+                        const bw = x.bandwidth();
+                        // Center point check for robust selection
+                        const cx = bx + bw / 2;
+                        return cx >= x0 && cx <= x1;
+                    });
+
+                    if (selected.length > 0) {
+                        const minYear = selected[0].year;
+                        const maxYear = selected[selected.length - 1].year + 4;
+                        FILTERS.yearRange = [minYear, maxYear];
+                    } else {
+                        FILTERS.yearRange = null;
+                    }
+                }
+                updateDashboard();
+            }
+        }
+
+    </script>
+</body>
+
+</html>

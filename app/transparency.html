@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transparency & Methodology - Digital Editions Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <h1
+                    class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    Digital Editions Explorer
+                </h1>
+                <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Methodology
+                    (Detailed)</span>
+            </div>
+            <a href="dashboard.html"
+                class="text-sm font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                    <path fill-rule="evenodd"
+                        d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
+                        clip-rule="evenodd" />
+                </svg>
+                Back to Dashboard
+            </a>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+        <div class="mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">Data Transparency & Methodology</h2>
+            <p class="text-lg text-gray-600 leading-relaxed">
+                This platform provides insights into digital editions by combining <strong>explicit metadata</strong>
+                found in the source TEI/XML files with <strong>inferred characteristics</strong> derived from text
+                analysis. This page explains how we process data to help you interpret the results with confidence.
+            </p>
+        </div>
+
+        <!-- Legend -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-3 h-3 bg-sky-500 rounded-sm"></div>
+                    <h3 class="font-bold text-gray-900">Original / Explicit Data</h3>
+                </div>
+                <p class="text-sm text-gray-600">
+                    Data directly extracted from standardized TEI tags (e.g., <code>&lt;lang&gt;</code>,
+                    <code>&lt;date&gt;</code>). We trust this data as authoritative.
+                </p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-3 h-3 bg-sky-200 rounded-sm"></div>
+                    <h3 class="font-bold text-gray-900">Inferred Data</h3>
+                </div>
+                <p class="text-sm text-gray-600">
+                    Data derived when explicit tags are missing. We use keyword analysis, structural pattern matching,
+                    and statistical methods (like language detection) to fill gaps.
+                </p>
+            </div>
+        </div>
+
+        <div class="space-y-12">
+
+            <!-- Section 1: Tag Mapping & Extraction Paths -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm">1</span>
+                    TEI Tag Mapping & XPath Expressions
+                </h3>
+                <div class="bg-white p-6 rounded-lg border border-gray-200 mb-6">
+                    <p class="text-gray-600 mb-4">
+                        Each facet is extracted using specific XPath expressions that target TEI XML elements. Below is
+                        a comprehensive mapping of which tags contribute to each facet. Multiple paths are checked in
+                        priority order.
+                    </p>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Date Facet -->
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary
+                            class="px-6 py-4 cursor-pointer hover:bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                            Temporal Perspectives (Creation, Publication, Content)
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 text-sm space-y-3">
+                            <div>
+                                <strong class="text-gray-900 leading-6">1. Creation Date (Historical Origin):</strong>
+                                <p class="text-xs text-gray-500 mb-2 italic">When the document was originally written or composed. Most valuable for historical analysis.</p>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                    <li><code>&lt;teiHeader&gt;//&lt;origDate&gt;</code></li>
+                                    <li><code>&lt;profileDesc&gt;/&lt;creation&gt;//&lt;date&gt;</code></li>
+                                    <li><code>&lt;msDesc&gt;/&lt;origin&gt;//&lt;date&gt;</code></li>
+                                    <li><code>&lt;correspDesc&gt;/&lt;correspAction[@type='sent']&gt;//&lt;date&gt;</code></li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong class="text-gray-900 leading-6">2. Publication Date (Edition Date):</strong>
+                                <p class="text-xs text-gray-500 mb-2 italic">When the specific digital or printed edition was released.</p>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                    <li><code>&lt;fileDesc&gt;/&lt;publicationStmt&gt;//&lt;date&gt;</code></li>
+                                    <li><code>&lt;teiHeader&gt;//&lt;docDate&gt;</code> (Fallback)</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong class="text-gray-900 leading-6">3. Content Date (Narrative Context):</strong>
+                                <p class="text-xs text-gray-500 mb-2 italic">Dates mentioned within the text itself (people, events, narratives).</p>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                    <li><code>&lt;body&gt;//&lt;date&gt;</code></li>
+                                    <li><code>&lt;text&gt;//&lt;date&gt;</code></li>
+                                    <li><code>&lt;dateline&gt;//&lt;date&gt;</code></li>
+                                </ul>
+                            </div>
+                            <div class="pt-2 border-t border-gray-200">
+                                <strong class="text-gray-900">Attributes Checked:</strong>
+                                <code>@when</code>, <code>@when-iso</code>, <code>@from</code>/<code>@to</code>,
+                                <code>@notBefore</code>/<code>@notAfter</code>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Language Facet -->
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary
+                            class="px-6 py-4 cursor-pointer hover:bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                            Language
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 text-sm space-y-3">
+                            <div>
+                                <strong class="text-gray-900">Explicit Tags:</strong>
+                                <ul class="list-disc pl-5 mt-2 text-gray-600 space-y-1">
+                                    <li><code>&lt;textLang @ident&gt;</code></li>
+                                    <li><code>&lt;text @xml:lang&gt;</code></li>
+                                    <li>Any element with <code>@xml:lang</code> attribute</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong class="text-gray-900">Inference Method:</strong>
+                                <p class="text-gray-600 mt-2">If no explicit language tag exists, we extract 3 text
+                                    samples (300 chars each) from start, middle, and end of <code>&lt;body&gt;</code>
+                                    and use <strong>statistical n-gram analysis</strong> (langdetect library) with 70%
+                                    probability threshold.</p>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Geography Facet -->
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary
+                            class="px-6 py-4 cursor-pointer hover:bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                            Geographic Perspectives (Creation, Publication, Content)
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 text-sm space-y-4">
+                            <div>
+                                <strong class="text-gray-900 leading-6">1. Creation Place:</strong>
+                                <p class="text-xs text-gray-500 mb-1 italic">Location where the document was originally written.</p>
+                                <ul class="list-disc pl-5 text-gray-600">
+                                    <li><code>&lt;correspAction[@type='sent']&gt;/&lt;placeName&gt;</code></li>
+                                    <li><code>&lt;origPlace&gt;</code> in <code>&lt;msDesc&gt;</code></li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong class="text-gray-900 leading-6">2. Publication Place:</strong>
+                                <p class="text-xs text-gray-500 mb-1 italic">Location of the publisher or print shop.</p>
+                                <ul class="list-disc pl-5 text-gray-600">
+                                    <li><code>&lt;publicationStmt&gt;//&lt;pubPlace&gt;</code></li>
+                                    <li><code>&lt;docImprint&gt;/&lt;pubPlace&gt;</code></li>
+                                </ul>
+                            </div>
+                            <div>
+                                <strong class="text-gray-900 leading-6">3. Content Place (Contextual):</strong>
+                                <p class="text-xs text-gray-500 mb-1 italic">Any locations mentioned in the narrative body.</p>
+                                <ul class="list-disc pl-5 text-gray-600">
+                                    <li><code>&lt;body&gt;//&lt;placeName&gt;</code></li>
+                                    <li><code>&lt;body&gt;//&lt;settlement&gt;</code>, <code>&lt;region&gt;</code>, <code>&lt;geogName&gt;</code></li>
+                                </ul>
+                            </div>
+                            <div class="pt-2 border-t border-gray-200">
+                                <strong class="text-gray-900">Enrichment & Geocoding:</strong>
+                                <p class="text-gray-600 mt-2">
+                                    We use a multi-pass pipeline to resolve these names to coordinates:
+                                    <br>• <strong>Primary</strong>: Explicit <code>@key</code> attributes (GeoNames IDs).
+                                    <br>• <strong>Refined</strong>: Fuzzy-matching against <code>GeoNames Cities15000</code>.
+                                    <br>• <strong>Fuzzy</strong>: Normalization of historical spellings and suffix stripping.
+                                </p>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Boolean Characteristics -->
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary
+                            class="px-6 py-4 cursor-pointer hover:bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                            Content Characteristics (16 Boolean Facets)
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 text-sm space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="border-l-4 border-blue-500 pl-3">
+                                    <strong class="text-gray-900">Contains Verse</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;lg&gt;</code>,
+                                        <code>&lt;l&gt;</code>, <code>@type="poem"</code>
+                                    </p>
+                                    <p class="text-xs text-gray-600">Keywords: poem, poetry, verse, lyric</p>
+                                </div>
+                                <div class="border-l-4 border-blue-500 pl-3">
+                                    <strong class="text-gray-900">Is Letter</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;correspDesc&gt;</code>,
+                                        <code>&lt;opener&gt;</code>, <code>&lt;closer&gt;</code>,
+                                        <code>&lt;signed&gt;</code>
+                                    </p>
+                                    <p class="text-xs text-gray-600">Keywords: letter, correspondence, brief, epistle
+                                    </p>
+                                </div>
+                                <div class="border-l-4 border-green-500 pl-3">
+                                    <strong class="text-gray-900">Contains Direct Speech</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;sp&gt;</code>,
+                                        <code>&lt;u&gt;</code>, <code>&lt;q&gt;</code>, <code>&lt;said&gt;</code>
+                                    </p>
+                                </div>
+                                <div class="border-l-4 border-green-500 pl-3">
+                                    <strong class="text-gray-900">Is Manuscript</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;msDesc&gt;</code></p>
+                                </div>
+                                <div class="border-l-4 border-purple-500 pl-3">
+                                    <strong class="text-gray-900">Contains Linguistic Annotation</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;w @lemma&gt;</code>,
+                                        <code>&lt;w @pos&gt;</code>, <code>&lt;spanGrp&gt;</code>,
+                                        <code>&lt;fs&gt;</code>
+                                    </p>
+                                </div>
+                                <div class="border-l-4 border-purple-500 pl-3">
+                                    <strong class="text-gray-900">Contains Dictionary</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;entry&gt;</code>,
+                                        <code>&lt;entryFree&gt;</code>, <code>&lt;superEntry&gt;</code>
+                                    </p>
+                                </div>
+                                <div class="border-l-4 border-orange-500 pl-3">
+                                    <strong class="text-gray-900">Contains Theatre/Drama</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: 10+ <code>&lt;sp&gt;</code> +
+                                        <code>&lt;stage&gt;</code>, <code>@type="drama"</code>
+                                    </p>
+                                </div>
+                                <div class="border-l-4 border-orange-500 pl-3">
+                                    <strong class="text-gray-900">Contains Inscriptions</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Tags: <code>&lt;msDesc&gt;</code> +
+                                        <code>&lt;objectDesc&gt;</code>
+                                    </p>
+                                    <p class="text-xs text-gray-600">Keywords: inscription, epigraphic, epidoc</p>
+                                </div>
+                                <div class="border-l-4 border-red-500 pl-3">
+                                    <strong class="text-gray-900">Contains East Asian Scripts</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Detected: Unicode ranges for CJK, Hiragana,
+                                        Katakana, Hangul</p>
+                                    <p class="text-xs text-gray-600">Languages: ja, zh, ko</p>
+                                </div>
+                                <div class="border-l-4 border-red-500 pl-3">
+                                    <strong class="text-gray-900">Contains Japanese Scripts</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Detected: Hiragana (U+3040–U+309F), Katakana
+                                        (U+30A0–U+30FF)</p>
+                                </div>
+                                <div class="border-l-4 border-amber-500 pl-3">
+                                    <strong class="text-gray-900">Is Political Letter</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Letter + keywords: politics, parliament,
+                                        minister, diplomat</p>
+                                    <p class="text-xs text-gray-600">Roles: king, minister, senator, etc.</p>
+                                </div>
+                                <div class="border-l-4 border-amber-500 pl-3">
+                                    <strong class="text-gray-900">Contains Law Texts</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Keywords: law, statute, code, edict, decree,
+                                        legislation</p>
+                                </div>
+                                <div class="border-l-4 border-teal-500 pl-3">
+                                    <strong class="text-gray-900">Contains Diary</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Keywords/Types: diary, journal, tagebuch,
+                                        journal intime</p>
+                                </div>
+                                <div class="border-l-4 border-teal-500 pl-3">
+                                    <strong class="text-gray-900">Contains Newspaper Articles</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Keywords/Types: newspaper, article, press,
+                                        gazette, zeitung</p>
+                                </div>
+                                <div class="border-l-4 border-slate-500 pl-3">
+                                    <strong class="text-gray-900">Is Medieval Manuscript</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Manuscript + date between 500-1500 CE</p>
+                                </div>
+                                <div class="border-l-4 border-indigo-500 pl-3">
+                                    <strong class="text-gray-900">Contains Political Protocols</strong>
+                                    <p class="text-xs text-gray-600 mt-1">Types/Keywords: protocol, minutes,
+                                        proceedings, parliament, council</p>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Other Facets -->
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary
+                            class="px-6 py-4 cursor-pointer hover:bg-gray-50 font-semibold text-gray-900 flex items-center justify-between">
+                            Other Metadata Facets
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 text-sm space-y-3">
+                            <div><strong>Title:</strong> <code>&lt;titleStmt&gt;/&lt;title&gt;</code></div>
+                            <div><strong>People/Authors:</strong> <code>&lt;author&gt;</code>,
+                                <code>&lt;persName&gt;</code>, <code>&lt;sex&gt;</code>, <code>&lt;occupation&gt;</code>
+                            </div>
+                            <div><strong>Repository:</strong> <code>&lt;repository&gt;</code>,
+                                <code>&lt;institution&gt;</code>, <code>&lt;library&gt;</code>
+                            </div>
+                            <div><strong>Subjects:</strong> <code>&lt;keywords&gt;//&lt;term&gt;</code>,
+                                <code>&lt;catRef @target&gt;</code>
+                            </div>
+                            <div><strong>Rights:</strong> <code>&lt;availability&gt;</code>,
+                                <code>&lt;licence&gt;</code>
+                            </div>
+                            <div><strong>Organizations:</strong> <code>&lt;orgName&gt;</code></div>
+                            <div><strong>Citations:</strong> <code>&lt;bibl&gt;</code>, <code>&lt;biblStruct&gt;</code>,
+                                <code>&lt;relation @target&gt;</code>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- Section 2: Core Metadata -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm">2</span>
+                    Inference Methodology
+                </h3>
+                <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th
+                                    class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider w-1/4">
+                                    Facet</th>
+                                <th class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                    Methodology</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr>
+                                <td class="px-6 py-4 font-semibold text-gray-900">Title</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    Taken from <code>&lt;titleStmt&gt;</code> or <code>&lt;title&gt;</code>. Fallback to
+                                    filename if missing.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-semibold text-gray-900">Date</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <div class="mb-2"><strong>Explicit:</strong> Extracted from <code>@when</code>,
+                                        <code>@from</code>/<code>@to</code> attributes on <code>&lt;origDate&gt;</code>
+                                        or <code>&lt;docDate&gt;</code>.
+                                    </div>
+                                    <div><strong>Inferred:</strong> If explicit attributes are missing, we parse date
+                                        strings (e.g., "circa 1850", "19th century") to estimate a year.</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-semibold text-gray-900">Language</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <div class="mb-2"><strong>Explicit:</strong> <code>xml:lang</code> attributes on
+                                        text elements.</div>
+                                    <div><strong>Inferred:</strong> Statistical n-gram analysis (langdetect) on 3
+                                        samples of body text (start, middle, end) if no tag is present.</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-semibold text-gray-900">Geography</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    We extract places from <code>&lt;placeName&gt;</code>, <code>&lt;country&gt;</code>,
+                                    etc. We enrich this by looking up unknown cities in the GeoNames database to infer
+                                    their Country and Continent.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section 3: Characteristics -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">3</span>
+                    Content Characteristics (Detailed)
+                </h3>
+                <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="px-6 py-4 bg-blue-50/50 border-b border-gray-200 text-sm text-gray-600">
+                        These boolean flags (True/False) describe the content. "Explicit" means a specific TEI tag
+                        exists. "Inferred" means we scanned the text for specific keywords or structural patterns.
+                    </div>
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th
+                                    class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider w-1/4">
+                                    Characteristic</th>
+                                <th class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                                    Detection Logic</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Contains Verse</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit:</strong> <code>&lt;lg&gt;</code> (line groups) or
+                                    <code>type="poem"</code>.<br>
+                                    <strong>Inferred:</strong> Keywords like "poem", "verse", "lyric".
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Is Letter</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit:</strong> <code>&lt;correspDesc&gt;</code> or structural
+                                    <code>&lt;opener&gt;</code>/<code>&lt;closer&gt;</code> tags.<br>
+                                    <strong>Inferred:</strong> Keywords like "letter", "dear", "sincerely".
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Is Manuscript</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit Only:</strong> Presence of <code>&lt;msDesc&gt;</code> in the
+                                    header.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Contains Direct Speech</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit Only:</strong> Tags like <code>&lt;sp&gt;</code>,
+                                    <code>&lt;u&gt;</code>, <code>&lt;q&gt;</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Contains Theatre/Drama</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit:</strong> <code>type="drama"</code>.<br>
+                                    <strong>Inferred:</strong> Structure with >10 speech tags (<code>&lt;sp&gt;</code>)
+                                    plus stage directions (<code>&lt;stage&gt;</code>).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">Is Medieval Manuscript</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Inferred:</strong> Manuscript dated 500–1500 CE.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 font-medium text-gray-900">East Asian / Japanese Scripts</td>
+                                <td class="px-6 py-4 text-gray-600">
+                                    <strong>Explicit:</strong> <code>xml:lang="ja"</code> etc.<br>
+                                    <strong>Inferred:</strong> Detection of Unicode character ranges (Hiragana,
+                                    Katakana, CJK Ideographs).
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section 4: Topics -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm">4</span>
+                    Topics
+                </h3>
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <p class="text-gray-600 mb-4">
+                        Topics are generated using the <strong>FASTTopic</strong> model, a neural topic modeling
+                        approach that leverages pre-trained embeddings to discover coherent themes across disparate
+                        editions.
+                    </p>
+                    <ul class="list-disc pl-5 space-y-2 text-gray-600 text-sm">
+                        <li>Topics are <strong>fully inferred</strong>; they are not explicit tags in the source files.
+                        </li>
+                        <li>The names you see (e.g., "government, council, law") are the top most frequent words in that
+                            topic.</li>
+                        <li>You can rename these topics in the dashboard to make them more human-readable.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 5: Coverage of TEI data -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-sm">5</span>
+                    Data Quality Metrics: TEI Conformance and Element Coverage
+                </h3>
+                <div class="bg-white p-6 rounded-lg border border-gray-200 mb-6">
+                    <p class="text-gray-600 mb-4">
+                        Each edition in the Explorer is evaluated against the TEI P5 Guidelines to determine its
+                        encoding completeness. This dashboard displays the percentage of expected tags present across
+                        four categories: Required Elements, Metadata Coverage, Structural Details, and Encoding
+                        Features.
+                    </p>
+                </div>
+
+                <!-- Edition Details -->
+                <div id="complianceDetails" class="space-y-3">
+                    <p class="text-gray-500 text-center py-8">Loading compliance data...</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Edition Coverage Table -->
+            <section>
+                <h3 class="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                    <span
+                        class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm">6</span>
+                    Edition Coverage by Content Type
+                </h3>
+                <p class="text-sm text-gray-500 mb-4">Which editions contain which types of content and metadata. Click
+                    a column
+                    header to sort. Use the search box to filter editions.</p>
+
+                <div class="mb-3">
+                    <input type="text" id="editionSearch" placeholder="Filter editions..."
+                        class="border border-gray-300 rounded px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        oninput="filterEditionTable()">
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg overflow-auto max-h-[600px]">
+                    <table id="editionTable" class="text-xs min-w-max divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0 z-10">
+                            <tr id="editionTableHead"></tr>
+                        </thead>
+                        <tbody id="editionTableBody" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                    <div id="editionTableLoading" class="p-6 text-center text-gray-400 text-sm">Loading...</div>
+                </div>
+
+                <!-- Legend -->
+                <div class="mt-3 flex items-center gap-6 text-xs text-gray-500 flex-wrap">
+                    <div class="flex items-center gap-1.5">
+                        <span class="inline-block w-3 h-3 rounded-sm bg-amber-400"></span>
+                        <span>Present / detected</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="inline-block w-3 h-3 rounded-sm bg-gray-100"></span>
+                        <span>Not present / not detected</span>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <footer class="mt-20 pt-8 border-t border-gray-200 text-center text-sm text-gray-500 pb-8">
+            <p>Generated for the Digital Editions Explorer Project</p>
+        </footer>
+
+    </main>
+
+    <script>
+        const BOOL_TYPES = [
+            'contains_verse', 'contains_linguistic_annotation', 'contains_direct_speech',
+            'contains_east_asian_scripts', 'contains_japanese_scripts', 'contains_newspaper_articles',
+            'is_manuscript', 'contains_inscriptions', 'contains_dictionary', 'is_letter',
+            'is_political_letter', 'contains_law_texts', 'contains_diary', 'is_medieval_manuscript',
+            'contains_theatre', 'contains_political_protocols'
+        ];
+
+        const METADATA_TYPES = ['has_language', 'has_date', 'has_geography', 'has_topics'];
+
+        const LABELS = {
+            // Metadata labels
+            'has_language': 'Language',
+            'has_date': 'Date',
+            'has_geography': 'Geography',
+            'has_topics': 'Topics',
+            // Content type labels
+            'contains_verse': 'Verse',
+            'contains_linguistic_annotation': 'Linguistic Ann.',
+            'contains_direct_speech': 'Direct Speech',
+            'contains_east_asian_scripts': 'East Asian',
+            'contains_japanese_scripts': 'Japanese',
+            'contains_newspaper_articles': 'Newspaper',
+            'is_manuscript': 'Manuscript',
+            'contains_inscriptions': 'Inscriptions',
+            'contains_dictionary': 'Dictionary',
+            'is_letter': 'Letter',
+            'is_political_letter': 'Political Letter',
+            'contains_law_texts': 'Law Texts',
+            'contains_diary': 'Diary',
+            'is_medieval_manuscript': 'Medieval MS',
+            'contains_theatre': 'Theatre',
+            'contains_political_protocols': 'Protocols'
+        };
+
+        let tableData = [];
+        let sortCol = null;
+        let sortAsc = true;
+
+        function makeVerticalTh(label, col, extraClass = '') {
+            const th = document.createElement('th');
+            th.className = 'px-2 py-2 font-medium text-gray-500 cursor-pointer hover:bg-gray-100 text-center ' + extraClass;
+            th.style.writingMode = 'vertical-rl';
+            th.style.transform = 'rotate(180deg)';
+            th.style.height = '110px';
+            th.style.verticalAlign = 'bottom';
+            th.textContent = label;
+            th.onclick = () => sortTable(col);
+            return th;
+        }
+
+        Promise.all([
+            fetch('dashboard_editions.json').then(r => r.json()),
+            fetch('dashboard_data.json').then(r => r.json()),
+            fetch('edition_topics.json').then(r => r.json()).catch(() => ({}))
+        ]).then(([edData, docData, topicsData]) => {
+            document.getElementById('editionTableLoading').remove();
+
+            // Collect all editions from the boolean features
+            const allEditions = new Set();
+            BOOL_TYPES.forEach(t => { if (edData[t]) Object.keys(edData[t]).forEach(e => allEditions.add(e)); });
+
+            // Build per-edition metadata coverage from document-level data
+            const edLang = {};     // edition => has ≥1 doc with explicit language
+            const edDate = {};     // edition => has ≥1 doc with a publication date
+            const edGeo = {};      // edition => has ≥1 doc with geo data
+
+            docData.forEach(d => {
+                const ed = d.ed_id;
+                if (!ed) return;
+                allEditions.add(ed); // ensure editions from doc data are included too
+                // Language: prefer explicit (not inferred)
+                if (d.lang && !d.lang_inf) edLang[ed] = true;
+                else if (d.lang && !edLang[ed]) edLang[ed] = edLang[ed] || false; // at least has something
+                // Date: has any publication date
+                if (d.date_pub != null) edDate[ed] = true;
+                // Geography
+                if (d.geo && d.geo.length > 0) edGeo[ed] = true;
+            });
+
+            // Build row data
+            tableData = [...allEditions].sort().map(ed => {
+                const row = { edition: ed };
+                // Boolean content types
+                BOOL_TYPES.forEach(t => { row[t] = edData[t] && edData[t][ed] === true; });
+                row._total = BOOL_TYPES.filter(t => row[t]).length;
+                // Metadata coverage
+                row.has_language = !!edLang[ed];
+                row.has_date = !!edDate[ed];
+                row.has_geography = !!edGeo[ed];
+                // Topics: any topic with count > 0 for this edition
+                const edTopics = topicsData[ed];
+                row.has_topics = edTopics ? Object.values(edTopics).some(v => v > 0) : false;
+                return row;
+            });
+
+            // Build header
+            const head = document.getElementById('editionTableHead');
+
+            // Edition column
+            const thEd = document.createElement('th');
+            thEd.className = 'px-4 py-2 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 sticky left-0 bg-gray-50 whitespace-nowrap';
+            thEd.textContent = 'Edition';
+            thEd.onclick = () => sortTable('edition');
+            head.appendChild(thEd);
+
+            // Metadata columns
+            METADATA_TYPES.forEach(t => {
+                head.appendChild(makeVerticalTh(LABELS[t] || t, t));
+            });
+
+            // Content-type columns
+            BOOL_TYPES.forEach(t => {
+                head.appendChild(makeVerticalTh(LABELS[t] || t, t));
+            });
+
+            // Total column
+            const thTotal = document.createElement('th');
+            thTotal.className = 'px-3 py-2 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 text-center whitespace-nowrap';
+            thTotal.textContent = 'Total';
+            thTotal.onclick = () => sortTable('_total');
+            head.appendChild(thTotal);
+
+            renderTable();
+        }).catch(() => {
+            document.getElementById('editionTableLoading').textContent = 'Could not load edition data.';
+        });
+
+        function sortTable(col) {
+            if (sortCol === col) sortAsc = !sortAsc;
+            else { sortCol = col; sortAsc = col === 'edition'; }
+            renderTable();
+        }
+
+        function filterEditionTable() { renderTable(); }
+
+        function renderTable() {
+            const search = (document.getElementById('editionSearch').value || '').toLowerCase();
+            const tbody = document.getElementById('editionTableBody');
+            tbody.innerHTML = '';
+
+            let rows = tableData.filter(r => !search || r.edition.toLowerCase().includes(search));
+
+            if (sortCol) {
+                rows = [...rows].sort((a, b) => {
+                    const av = a[sortCol], bv = b[sortCol];
+                    if (typeof av === 'boolean') return sortAsc ? av - bv : bv - av;
+                    if (typeof av === 'number') return sortAsc ? av - bv : bv - av;
+                    return sortAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+                });
+            }
+
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-amber-50 transition-colors';
+
+                // Edition name cell
+                const tdEd = document.createElement('td');
+                tdEd.className = 'px-4 py-2 font-mono text-gray-700 sticky left-0 bg-white whitespace-nowrap border-r border-gray-100';
+                tdEd.textContent = row.edition;
+                tr.appendChild(tdEd);
+
+                // Metadata cells
+                METADATA_TYPES.forEach(t => {
+                    const td = document.createElement('td');
+                    td.className = 'px-2 py-2 text-center';
+                    td.innerHTML = row[t]
+                        ? '<span class="inline-block w-4 h-4 rounded-sm bg-amber-400" title="Yes"></span>'
+                        : '<span class="inline-block w-4 h-4 rounded-sm bg-gray-100" title="No"></span>';
+                    tr.appendChild(td);
+                });
+
+                // Content-type cells
+                BOOL_TYPES.forEach(t => {
+                    const td = document.createElement('td');
+                    td.className = 'px-2 py-2 text-center';
+                    td.innerHTML = row[t]
+                        ? '<span class="inline-block w-4 h-4 rounded-sm bg-amber-400" title="Yes"></span>'
+                        : '<span class="inline-block w-4 h-4 rounded-sm bg-gray-100" title="No"></span>';
+                    tr.appendChild(td);
+                });
+
+                // Total cell
+                const tdTotal = document.createElement('td');
+                tdTotal.className = 'px-2 py-2 text-center font-semibold text-gray-600';
+                tdTotal.textContent = row._total;
+                tr.appendChild(tdTotal);
+
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+
+    <script>
+        // Load and render compliance data
+        if (window.location.protocol === 'file:') {
+            document.getElementById('complianceDetails').innerHTML =
+                '<div class="bg-amber-50 border border-amber-200 p-6 rounded-lg text-amber-800 text-center">' +
+                '<h4 class="font-bold mb-2">Browser Security Note</h4>' +
+                '<p class="text-sm">You are viewing this page as a local file. Browsers block data loading for file:// URLs for security.</p>' +
+                '<p class="text-sm mt-2 font-semibold text-blue-600 italic">Please view this through a local server (e.g. port 8001).</p>' +
+                '</div>';
+        } else {
+            fetch('guideline_compliance.json')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    renderComplianceSummary(data.summary);
+                    renderComplianceDetails(data.editions);
+                })
+                .catch(error => {
+                    console.error('Error loading compliance data:', error);
+                    document.getElementById('complianceDetails').innerHTML =
+                        '<div class="bg-red-50 border border-red-200 p-6 rounded-lg text-red-800 text-center">' +
+                        '<h4 class="font-bold mb-2">Data Loading Error</h4>' +
+                        '<p class="text-sm">Failed to load <code>guideline_compliance.json</code>.</p>' +
+                        '<p class="text-xs mt-2 text-red-600">Details: ' + error.message + '</p>' +
+                        '</div>';
+                });
+        }
+
+        function renderComplianceSummary(summary) {
+            // Summary hidden in v2
+        }
+
+        function renderComplianceDetails(editions) {
+            const container = document.getElementById('complianceDetails');
+
+            // Sort editions alphabetically by name and filter out those with errors
+            const sortedEditions = Object.entries(editions)
+                .filter(([_, data]) => !data.error && data.required_elements)
+                .sort((a, b) => a[0].localeCompare(b[0]));
+
+            let html = '';
+
+            for (const [editionName, data] of sortedEditions) {
+                html += `
+                    <details class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <summary class="px-6 py-4 cursor-pointer hover:bg-gray-50 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="font-semibold text-gray-900">${editionName}</span>
+                            </div>
+                            <div class="flex items-center gap-6">
+                                <span class="text-sm text-gray-500">${data.documents_analyzed} documents</span>
+                                <div class="flex flex-col items-end">
+                                    <span class="text-[10px] text-gray-400 uppercase font-bold tracking-tight">TEI tags coverage</span>
+                                    <span class="text-lg font-bold text-blue-600">${data.overall_score}</span>
+                                </div>
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </div>
+                        </summary>
+                        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                            ${renderEditionDetails(data)}
+                        </div>
+                    </details>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderEditionDetails(data) {
+            if (!data || data.error) {
+                return `<p class="text-red-500 italic p-4">Error: ${data?.error || 'No data available'}</p>`;
+            }
+
+            let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">';
+
+            // Required Elements
+            html += `
+                <div class="bg-white p-4 rounded border border-gray-200">
+                    <h4 class="font-bold text-gray-900 mb-2">Required Elements (${data.required_elements.score}%)</h4>
+                    <div class="space-y-1 text-xs">
+            `;
+            for (const [elem, info] of Object.entries(data.required_elements.details)) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-600">${elem}</span>
+                        <span class="font-medium ${info.status === '✓' ? 'text-green-600' : 'text-red-600'}">
+                            ${info.status} ${info.percentage}%
+                        </span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+
+            // Metadata Completeness
+            html += `
+                <div class="bg-white p-4 rounded border border-gray-200">
+                    <h4 class="font-bold text-gray-900 mb-2">Metadata Coverage (${data.metadata_completeness.score}%)</h4>
+                    <div class="space-y-1 text-xs">
+            `;
+            for (const [field, info] of Object.entries(data.metadata_completeness.field_coverage)) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-600">${field}</span>
+                        <span class="font-medium ${info.status === '✓' ? 'text-green-600' : (info.status === '⚠' ? 'text-yellow-600' : 'text-red-600')}">
+                            ${info.status} ${info.percentage}%
+                        </span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+
+            // Structural Validation
+            html += `
+                <div class="bg-white p-4 rounded border border-gray-200">
+                    <h4 class="font-bold text-gray-900 mb-2">Structural Details (${data.structural_validation.score}%)</h4>
+                    <div class="space-y-1 text-xs">
+            `;
+            for (const [check, info] of Object.entries(data.structural_validation.checks)) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-600">${check.replace('has_', '').replace(/_/g, ' ')}</span>
+                        <span class="font-medium ${info.status === '✓' ? 'text-green-600' : (info.status === '⚠' ? 'text-yellow-600' : 'text-red-600')}">
+                            ${info.status} ${info.percentage}%
+                        </span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+
+            // Best Practices
+            html += `
+                <div class="bg-white p-4 rounded border border-gray-200">
+                    <h4 class="font-bold text-gray-900 mb-2">Encoding Features (${data.best_practices.score}%)</h4>
+                    <div class="space-y-1 text-xs">
+            `;
+            for (const [elem, info] of Object.entries(data.best_practices.recommendations)) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-600">${elem}</span>
+                        <span class="font-medium ${info.status === '✓' ? 'text-green-600' : (info.status === '⚠' ? 'text-yellow-600' : 'text-red-600')}">
+                            ${info.status} ${info.percentage}%
+                        </span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+
+            html += '</div>';
+
+            // Encoding Depth
+            html += `
+                <div class="mt-4 bg-white p-4 rounded border border-gray-200">
+                    <h4 class="font-bold text-gray-900 mb-2">Encoding Density & Markup</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                        <div><span class="text-gray-600">Named Entities:</span> <span class="font-medium">${data.encoding_depth.avg_named_entities}</span></div>
+                        <div><span class="text-gray-600">Semantic:</span> <span class="font-medium">${data.encoding_depth.avg_semantic_markup}</span></div>
+                        <div><span class="text-gray-600">Linguistic:</span> <span class="font-medium">${data.encoding_depth.avg_linguistic_annotation}</span></div>
+                        <div><span class="text-gray-600">Editorial:</span> <span class="font-medium">${data.encoding_depth.avg_editorial_marks}</span></div>
+                        <div><span class="text-gray-600">Density:</span> <span class="font-medium">${data.encoding_depth.avg_markup_density}</span></div>
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+    </script>
+
+</body>
+
+</html>
