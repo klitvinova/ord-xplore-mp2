@@ -200,9 +200,9 @@
 
 
             <!-- Topics (Flexible but constrained) -->
-            <div class="mt-auto flex flex-col min-h-0 shrink-1 overflow-hidden">
+            <div class="flex flex-col min-h-0 shrink-0 overflow-hidden pb-8">
                 <h3 class="text-xs font-semibold text-gray-700 uppercase mb-1">Topics</h3>
-                <div id="topicChart" class="flex-1 overflow-y-auto border border-gray-100 rounded p-1 text-xs"></div>
+                <div id="topicChart" class="flex-1 overflow-y-auto border border-gray-100 rounded p-1 text-xs min-h-[200px]"></div>
             </div>
 
             <!-- Editions in View (Edition mode only) -->
@@ -262,7 +262,7 @@
             </div>
 
             <!-- Bottom Panel: Timeline & Cities -->
-            <div class="h-[22rem] bg-white flex shrink-0 border-t border-gray-200 shadow-lg relative z-20"
+            <div class="h-64 md:h-[22rem] bg-white flex shrink-0 border-t border-gray-200 shadow-lg relative z-20"
                 onclick="handleBackgroundClick(event)">
                 <!-- Timeline -->
                 <div class="flex-1 p-4 border-r border-gray-200 flex flex-col min-h-0">
@@ -1694,7 +1694,7 @@
                     inferred: v.inferred
                 }))
                 .sort((a, b) => b.value - a.value)
-                .slice(0, 15);
+                .slice(0, window.innerWidth < 1024 ? 8 : 15);
             drawBarChart("#langChart", data, (d) => {
                 FILTERS.lang = FILTERS.lang === d.key ? null : d.key;
                 updateDashboard();
@@ -1775,6 +1775,12 @@
             setTimeout(() => {
                 map.invalidateSize();
             }, 100);
+
+            // Responsive Resize Handling
+            window.addEventListener('resize', () => {
+                map.invalidateSize();
+                updateDashboard();
+            });
         }
         function updateMap(cityStats) {
             if (!cityClusters) return;
@@ -1950,7 +1956,7 @@
                 // Responsive Ticks: calculate interval based on width
                 let tickInterval = 10; // Default (50 years)
                 if (w < 500) tickInterval = 40; // 200 years
-                else if (w < 800) tickInterval = 20; // 100 years
+                else if (w < 1000) tickInterval = 20; // 100 years
 
                 const xAxis = d3.axisBottom(x)
                     .tickValues(x.domain().filter((d, i) => i % tickInterval === 0))
