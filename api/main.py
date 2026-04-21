@@ -19,10 +19,8 @@ from services.search_service import SearchService
 from services.lookup_service import LookupService
 from services.openai_llm import OpenAILLM
 
-# API key for copying: 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
-
 # Get API key from environment variable
-API_KEY = "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"
+API_KEY = os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable must be set")
 
