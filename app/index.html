@@ -262,7 +262,7 @@
             </div>
 
             <!-- Bottom Panel: Timeline & Cities -->
-            <div class="h-64 md:h-[22rem] bg-white flex shrink-0 border-t border-gray-200 shadow-lg relative z-20"
+            <div class="h-64 bg-white flex shrink-0 border-t border-gray-200 shadow-lg relative z-20"
                 onclick="handleBackgroundClick(event)">
                 <!-- Timeline -->
                 <div class="flex-1 p-4 border-r border-gray-200 flex flex-col min-h-0">
@@ -1073,7 +1073,31 @@
         function resetFilters() {
             document.getElementById('searchInput').value = "";
             document.getElementById('searchStatus').classList.add('hidden');
-            FILTERS = { lang: null, country: null, city: null, yearRange: null, gender: null, doc_type: null, feature: null, topicId: null, ids: null, includeInferredDate: true, dateSource: 'publication' };
+            FILTERS = { 
+                lang: null, 
+                country: null, 
+                city: null, 
+                yearRange: null, 
+                gender: null, 
+                doc_type: null, 
+                feature: null, 
+                topicId: null, 
+                ids: null, 
+                includeInferredDate: true, 
+                dateSource: 'contextual',
+                geoSource: 'contextual'
+            };
+            
+            // Reset Date source buttons
+            document.getElementById('btn-date-cre').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-date-pub').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-date-con').className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
+            
+            // Reset Geo source buttons
+            document.getElementById('btn-geo-cre').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-geo-pub').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-geo-con').className = "flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all";
+
             updateDashboard();
         }
 
