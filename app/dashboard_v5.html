@@ -342,13 +342,9 @@
 
             // Inject into RAW_DATA: doc qualifies if ANY of the selected tags is present
             tags.forEach(tag => {
-                const docsWithTag = new Set(TAG_PRESENCE[tag] || []);
+                const docsWithTagIndices = new Set(TAG_PRESENCE[tag] || []);
                 RAW_DATA.forEach(d => {
-                    let match = docsWithTag.has(d.id);
-                    if (!match) {
-                        const textId = d.id.split('/').pop();
-                        if (docsWithTag.has(textId)) match = true;
-                    }
+                    let match = d.tagIdxs.some(idx => docsWithTagIndices.has(idx));
                     if (match) d.features[key] = true;
                 });
             });
@@ -417,7 +413,8 @@
         let EDITION_TOPICS = {};
         let DOCUMENT_TOPICS = {};
         let TOPIC_HIERARCHY = [];
-        let TAG_PRESENCE = {}; // Loaded dynamically
+        let TAG_PRESENCE = {}; // Loaded dynamically (indices)
+        let FILE_INDEX = [];   // Loaded dynamically (filenames)
         let DYNAMIC_FEATURES = new Set(); // Tags/compound filters added by user
         let DYNAMIC_FILTER_META = {}; // key -> { label, tags } for compound filters
         let CITY_COUNTRY_MAPPING = {}; // City → Country name, loaded from city_country_mapping.json
@@ -458,16 +455,17 @@
         // Load Data
         const t = Date.now();
         Promise.all([
-            d3.json(`dashboard_data.json?v=${t}`),
+            d3.json(`dashboard_data_optimized.json?v=${t}`),
             d3.json(`dashboard_editions.json?v=${t}`),
             d3.json(`city_coordinates_v2.json?v=${t}`).catch(() => ({})),
             d3.json(`topics_hierarchy.json?v=${t}`),
             d3.json(`edition_topics.json?v=${t}`),
             d3.json(`document_topics.json?v=${t}`).catch(() => ({})),
-            d3.json(`tag_presence.json?v=${t}`).catch(() => ({})),
+            d3.json(`tag_presence_optimized.json?v=${t}`).catch(() => ({})),
+            d3.json(`file_index.json?v=${t}`).catch(() => ([])),
             d3.json(`city_country_mapping.json?v=${t}`).catch(() => ({})),
             d3.json(`city_unification.json?v=${t}`).catch(() => ({}))
-        ]).then(([docsData, edsMeta, geoData, topicRes, editionTopics, docTopics, tagPresence, geoMapping, cityUnification]) => {
+        ]).then(([docsData, edsMeta, geoData, topicRes, editionTopics, docTopics, tagPresence, fileIndex, geoMapping, cityUnification]) => {
 
             // Extract valid countries from GeoJSON
             if (geoData && geoData.features) {
@@ -484,6 +482,7 @@
             DOCUMENT_TOPICS = docTopics;
             TOPIC_HIERARCHY = topicRes;
             TAG_PRESENCE = tagPresence;
+            FILE_INDEX = fileIndex;
             EDITION_METADATA = edsMeta;
             CITY_COUNTRY_MAPPING = geoMapping || {};
             CITY_UNIFICATION = cityUnification || {};
@@ -585,9 +584,35 @@
                 return resolved;
             }
 
+            // Create mapping for fast tag index lookups
+            const tagFileToIndex = new Map();
+            FILE_INDEX.forEach((f, i) => tagFileToIndex.set(f, i));
+
             // Process RAW_DATA from Document Metadata
-            // Map optimized data to Dashboard format
-            RAW_DATA = docsData.map(d => {
+            const cols = docsData.columns;
+            const dicts = docsData.dictionaries;
+            const numDocs = cols.id.length;
+
+            RAW_DATA = [];
+            for (let i = 0; i < numDocs; i++) {
+                const d_raw = {
+                    id: cols.id[i],
+                    ed_id: dicts.ed_id[cols.ed_id[i]],
+                    title: cols.title[i],
+                    date_cre: cols.date_cre[i],
+                    date_cre_inf: cols.date_cre_inf[i],
+                    date_pub: cols.date_pub[i],
+                    date_pub_inf: cols.date_pub_inf[i],
+                    date_con: cols.date_con[i],
+                    date_con_inf: cols.date_con_inf[i],
+                    lang: dicts.lang[cols.lang[i]],
+                    lang_inf: cols.lang_inf[i],
+                    geo_cre: cols.geo_cre[i],
+                    geo_pub: cols.geo_pub[i],
+                    geo_con: cols.geo_con[i],
+                    features: cols.features[i]
+                };
+
                 // Geo Resolution
                 function extractGeo(geoArray) {
                     let country = null;
@@ -601,20 +626,24 @@
                     return { country, city };
                 }
                 
-                const geoCre = extractGeo(d.geo_cre);
-                const geoPub = extractGeo(d.geo_pub);
-                const geoCtx = extractGeo(d.geo_con);
+                const geoCre = extractGeo(d_raw.geo_cre);
+                const geoPub = extractGeo(d_raw.geo_pub);
+                const geoCtx = extractGeo(d_raw.geo_con);
 
-                // Ensure features object exists
-                const f = d.features || {};
+                // Pre-calculate tag indices for this doc
+                const tagIdxs = [];
+                const fullIdx = tagFileToIndex.get(d_raw.id);
+                if (fullIdx !== undefined) tagIdxs.push(fullIdx);
+                const baseIdx = tagFileToIndex.get(d_raw.id.split('/').pop());
+                if (baseIdx !== undefined && baseIdx !== fullIdx) tagIdxs.push(baseIdx);
 
-                return {
-                    id: d.id,
-                    filename: d.id.split('/').pop(),
-                    edition: d.ed_id,
-                    title: d.title,
-                    lang: d.lang || "unknown",
-                    langInferred: d.lang_inf || false,
+                RAW_DATA.push({
+                    id: d_raw.id,
+                    filename: d_raw.id.split('/').pop(),
+                    edition: d_raw.ed_id,
+                    title: d_raw.title,
+                    lang: d_raw.lang || "unknown",
+                    langInferred: d_raw.lang_inf || false,
                     
                     geo_creation: geoCre,
                     geo_publication: geoPub,
@@ -625,21 +654,22 @@
                     countryInferred: false,
                     cityInferred: false,
                     
-                    years_creation: toArray(d.date_cre),
-                    years_publication: toArray(d.date_pub),
-                    years_contextual: toArray(d.date_con),
+                    years_creation: toArray(d_raw.date_cre),
+                    years_publication: toArray(d_raw.date_pub),
+                    years_contextual: toArray(d_raw.date_con),
                     
                     get years() { return this['years_' + FILTERS.dateSource]; },
-                    get contextualYears() { return []; }, // Unused now but kept for compatibility
+                    get contextualYears() { return []; },
                     
-                    yearInferred: d.date_pub_inf || false,
+                    yearInferred: d_raw.date_pub_inf || false,
                     contextualInferred: false,
-                    features: f,
+                    features: d_raw.features || {},
+                    tagIdxs: tagIdxs,
                     // extra for filters
                     gender: null,
                     doc_type: null
-                };
-            });
+                });
+            }
 
             FILTERED_DATA = RAW_DATA;
 
