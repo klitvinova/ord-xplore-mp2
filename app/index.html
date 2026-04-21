@@ -288,7 +288,7 @@
                             </a>
                         </div>
                     </div>
-                    <div id="timeChart" class="w-full flex-1 pb-6 min-h-0"></div>
+                    <div id="timeChart" class="w-full flex-1 min-h-0"></div>
                 </div>
 
 
@@ -1073,7 +1073,28 @@
         function resetFilters() {
             document.getElementById('searchInput').value = "";
             document.getElementById('searchStatus').classList.add('hidden');
-            FILTERS = { lang: null, country: null, city: null, yearRange: null, gender: null, doc_type: null, feature: null, topicId: null, ids: null, includeInferredDate: true, dateSource: 'publication' };
+            
+            // Call UI update functions to reset button states and view mode
+            setMode('document');
+            setDateSource('contextual');
+            setGeoSource('contextual');
+            
+            // FILTERS is updated by the setDateSource/setGeoSource calls, but let's ensure full reset
+            FILTERS = { 
+                lang: null, 
+                country: null, 
+                city: null, 
+                yearRange: null, 
+                gender: null, 
+                doc_type: null, 
+                feature: null, 
+                topicId: null, 
+                ids: null, 
+                includeInferredDate: true, 
+                dateSource: 'contextual',
+                geoSource: 'contextual'
+            };
+            
             updateDashboard();
         }
 
@@ -1889,7 +1910,7 @@
 
             const w = container.node().clientWidth;
             const h = container.node().clientHeight;
-            const margin = { top: 10, right: 10, bottom: 60, left: 50 };
+            const margin = { top: 10, right: 10, bottom: 40, left: 40 };
 
             const svg = container.append("svg").attr("width", w).attr("height", h)
                 .on("click", (e) => e.stopPropagation());
