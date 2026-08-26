@@ -14,7 +14,7 @@ let pool;
 export function getPool() {
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL || DEFAULT_DSN,
+      connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || DEFAULT_DSN,
     });
   }
   return pool;
