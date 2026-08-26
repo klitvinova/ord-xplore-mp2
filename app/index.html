@@ -473,7 +473,14 @@
         // Load Data
         const t = Date.now();
         Promise.all([
-            fetch('/api/dashboard').then(res => res.json()),
+            fetch('/api/dashboard').then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => {
+                        throw new Error(err.error || err.message || `HTTP error ${res.status}`);
+                    });
+                }
+                return res.json();
+            }),
             d3.json(`topics_hierarchy.json?v=${t}`)
         ]).then(([dbMeta, topicRes]) => {
             TOPIC_HIERARCHY = topicRes;
