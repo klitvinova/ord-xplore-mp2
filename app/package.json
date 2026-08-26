@@ -1,3 +1,11 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:824ee29a149aa40efed006ea681e8a14dc45ca3f8d3f78da8bf2f139db96cd3e
-size 104
+{
+  "name": "ord-xplore-mp-api",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "openai": "^4.0.0",
+    "pg": "^8.11.3",
+    "@xmldom/xmldom": "^0.8.10",
+    "xpath": "^0.0.34"
+  }
+}

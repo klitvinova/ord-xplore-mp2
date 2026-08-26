@@ -329,10 +329,15 @@
 
     <script>
         // --- Dynamic Filter Logic ---
+        // Tags now live in SQL (tags / document_tags, see db/001_add_tags.sql).
+        // The modal queries /api/tags; matching happens server-side in
+        // /api/dashboard, driven by the customFilters payload.
+
         function showAddFilterModal() {
             document.getElementById('filterModal').classList.remove('hidden');
             document.getElementById('filterCustomName').value = '';
             document.getElementById('tagSearch').value = '';
+            SELECTED_TAGS.clear();
             renderTagList();
         }
         function closeAddFilterModal() {
@@ -340,32 +345,21 @@
         }
 
         function confirmAddFilter() {
-            // Collect checked tags
-            const checked = [...document.querySelectorAll('#tagList input[type=checkbox]:checked')];
-            if (checked.length === 0) return;
-            const tags = checked.map(cb => cb.value);
+            const tags = [...SELECTED_TAGS];
+            if (tags.length === 0) return;
 
             // Determine filter display name
             let name = (document.getElementById('filterCustomName').value || '').trim();
             if (!name) name = tags.length === 1 ? tags[0] : tags.join(' + ');
 
-            // Sanitise name as a key (keep raw name for display)
-            const key = '__custom__' + name;
+            const key = CUSTOM_PREFIX + name;
 
             // Skip if already present
             if (DYNAMIC_FEATURES.has(key)) { closeAddFilterModal(); return; }
             DYNAMIC_FEATURES.add(key);
 
-            // Inject into RAW_DATA: doc qualifies if ANY of the selected tags is present
-            tags.forEach(tag => {
-                const docsWithTagIndices = new Set(TAG_PRESENCE[tag] || []);
-                RAW_DATA.forEach(d => {
-                    let match = d.tagIdxs.some(idx => docsWithTagIndices.has(idx));
-                    if (match) d.features[key] = true;
-                });
-            });
-
-            // Store metadata so it can be displayed/removed nicely
+            // The tag list travels to the API on every request; the server does
+            // the matching, so there is nothing to compute client-side.
             DYNAMIC_FILTER_META[key] = { label: name, tags };
 
             closeAddFilterModal();
@@ -380,355 +374,123 @@
             if (FILTERS.feature && FILTERS.feature.key === key) {
                 FILTERS.feature = null;
             }
-
-            RAW_DATA.forEach(d => { delete d.features[key]; });
             updateDashboard();
         }
 
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
+
+        let tagSearchTimer = null;
+        // Called from the search box's onkeyup. Debounced so typing doesn't
+        // fire a query per keystroke.
         function renderTagList() {
+            clearTimeout(tagSearchTimer);
+            tagSearchTimer = setTimeout(fetchAndRenderTagList, 200);
+        }
+
+        async function fetchAndRenderTagList() {
             const list = document.getElementById('tagList');
             const searchInput = document.getElementById('tagSearch');
-            const search = searchInput ? searchInput.value.toLowerCase() : '';
+            const search = searchInput ? searchInput.value.trim() : '';
+
+            list.innerHTML = '<div class="text-xs text-gray-400 px-2 py-1">Loading tags…</div>';
+
+            let tags;
+            try {
+                const res = await fetch(`/api/tags?limit=500&search=${encodeURIComponent(search)}`);
+                const payload = await res.json();
+                if (!res.ok) throw new Error(payload.error || 'Request failed');
+                tags = payload.tags || [];
+            } catch (err) {
+                console.error('Could not load tags', err);
+                list.innerHTML =
+                    `<div class="text-xs text-rose-500 px-2 py-1">Could not load tags: ${escapeHtml(err.message)}</div>`;
+                return;
+            }
+
             list.innerHTML = '';
+            if (tags.length === 0) {
+                list.innerHTML = '<div class="text-xs text-gray-400 px-2 py-1">No matching tags.</div>';
+                return;
+            }
 
-            if (!TAG_PRESENCE) return;
-
-            Object.keys(TAG_PRESENCE).sort().forEach(tag => {
-                if (search && !tag.toLowerCase().includes(search)) return;
-                const count = TAG_PRESENCE[tag].length;
-
+            tags.forEach(({ name, doc_count }) => {
                 const label = document.createElement('label');
                 label.className = 'flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer';
                 label.innerHTML =
-                    `<input type="checkbox" value="${tag}" class="accent-gray-600 shrink-0">`
-                    + `<span class="font-mono text-xs text-gray-700 flex-1">&lt;${tag}&gt;</span>`
-                    + `<span class="text-xs text-gray-400">${count.toLocaleString()}</span>`;
+                    `<input type="checkbox" class="accent-gray-600 shrink-0"${SELECTED_TAGS.has(name) ? ' checked' : ''}>`
+                    + `<span class="font-mono text-xs text-gray-700 flex-1">&lt;${escapeHtml(name)}&gt;</span>`
+                    + `<span class="text-xs text-gray-400">${(doc_count || 0).toLocaleString()}</span>`;
+                // Selection is tracked outside the DOM so it survives re-renders
+                // when the user narrows the search.
+                label.querySelector('input').addEventListener('change', (e) => {
+                    if (e.target.checked) SELECTED_TAGS.add(name);
+                    else SELECTED_TAGS.delete(name);
+                });
                 list.appendChild(label);
             });
         }
     </script>
     <script>
-        // State
-        let RAW_DATA = [];
-        let FILTERED_DATA = [];
+        // --- Global State ---
+        // All aggregation happens server-side in /api/dashboard. The client
+        // holds filter state, the topic hierarchy, and edition metadata only.
+        const CUSTOM_PREFIX = '__custom__';
+
         let VIEW_MODE = 'document'; // 'document' | 'edition'
         let FILTERS = {
             lang: null,
             country: null,
-            city: null, // New City Filter
+            city: null,
             yearRange: null,
-            gender: null,
-            doc_type: null,
-            feature: null, // New Filter
-            includeInferredDate: true,
-            dateSource: 'contextual', // 'creation', 'publication' or 'contextual'
-            geoSource: 'contextual', // 'creation', 'publication' or 'contextual'
-            topicId: null
+            feature: null,              // { key, value } - built-in attribute or __custom__ tag filter
+            topicId: null,
+            dateSource: 'contextual',   // 'creation' | 'publication' | 'contextual'
+            geoSource: 'contextual'     // 'creation' | 'publication' | 'contextual'
         };
-        let EDITION_METADATA = {}; // Map<EditionID, Array<Features>>
-        let EDITION_TOPICS = {};
-        let DOCUMENT_TOPICS = {};
+        let ALL_FEATURES = [];
+        let EDITION_METADATA = {};
         let TOPIC_HIERARCHY = [];
-        let TAG_PRESENCE = {}; // Loaded dynamically (indices)
-        let FILE_INDEX = [];   // Loaded dynamically (filenames)
-        let DYNAMIC_FEATURES = new Set(); // Tags/compound filters added by user
-        let DYNAMIC_FILTER_META = {}; // key -> { label, tags } for compound filters
-        let CITY_COUNTRY_MAPPING = {}; // City → Country name, loaded from city_country_mapping.json
-        let SHOW_CONTEXTUAL = true; // Toggle for Contextual date bars
+        let DYNAMIC_FEATURES = new Set();
+        let DYNAMIC_FILTER_META = {};   // key -> { label, tags }
+        let SELECTED_TAGS = new Set();  // checkbox state inside the tag modal
+        let SHOW_CONTEXTUAL = true;
 
-        let cityLayer;
+        // Leaflet handles
         let map;
-        let VALID_COUNTRIES = new Set();
-        let CITY_COORDS = {};
-        let CITY_UNIFICATION = {};
         let cityClusters;
 
-        // --- Helpers ---
-        function parseYears(val) {
-            if (!val) return [];
-            val = val.toString().trim();
-
-            // 1. Handle comma-separated lists (e.g. "1850, 1852")
-            if (val.includes(',')) {
-                return val.split(',').map(p => parseYears(p)).flat();
-            }
-
-            // 2. Handle ranges "from — to" (em-dash), en-dash, hyphen
-            const parts = val.split(/[—–-]/);
-            if (parts.length === 2) {
-                const start = parseInt(parts[0]);
-                const end = parseInt(parts[1]);
-                if (!isNaN(start) && !isNaN(end)) {
-                    const range = [];
-                    for (let y = start; y <= end; y++) range.push(y);
-                    return range;
-                }
-            }
-            const single = parseInt(val);
-            return isNaN(single) ? [] : [single];
+        /** Tag lists for every active custom filter, sent with each request. */
+        function customFilterPayload() {
+            return [...DYNAMIC_FEATURES]
+                .filter(key => DYNAMIC_FILTER_META[key])
+                .map(key => ({ key, tags: DYNAMIC_FILTER_META[key].tags }));
         }
 
         // Load Data
         const t = Date.now();
         Promise.all([
-            d3.json(`dashboard_data_optimized.json?v=${t}`),
-            d3.json(`dashboard_editions.json?v=${t}`),
-            d3.json(`city_coordinates_v2.json?v=${t}`).catch(() => ({})),
-            d3.json(`topics_hierarchy.json?v=${t}`),
-            d3.json(`edition_topics.json?v=${t}`),
-            d3.json(`document_topics.json?v=${t}`).catch(() => ({})),
-            d3.json(`tag_presence_optimized.json?v=${t}`).catch(() => ({})),
-            d3.json(`file_index.json?v=${t}`).catch(() => ([])),
-            d3.json(`city_country_mapping.json?v=${t}`).catch(() => ({})),
-            d3.json(`city_unification.json?v=${t}`).catch(() => ({}))
-        ]).then(([docsData, edsMeta, geoData, topicRes, editionTopics, docTopics, tagPresence, fileIndex, geoMapping, cityUnification]) => {
-
-            // Extract valid countries from GeoJSON
-            if (geoData && geoData.features) {
-                geoData.features.forEach(f => {
-                    if (f.properties && f.properties.name) {
-                        VALID_COUNTRIES.add(f.properties.name);
-                    }
-                });
-            }
-            console.log("Valid Countries loaded:", VALID_COUNTRIES.size);
-            CITY_COORDS = geoData || {};
-
-            EDITION_TOPICS = editionTopics;
-            DOCUMENT_TOPICS = docTopics;
+            fetch('/api/dashboard').then(res => res.json()),
+            d3.json(`topics_hierarchy.json?v=${t}`)
+        ]).then(([dbMeta, topicRes]) => {
             TOPIC_HIERARCHY = topicRes;
-            TAG_PRESENCE = tagPresence;
-            FILE_INDEX = fileIndex;
-            EDITION_METADATA = edsMeta;
-            CITY_COUNTRY_MAPPING = geoMapping || {};
-            CITY_UNIFICATION = cityUnification || {};
+            ALL_FEATURES = dbMeta.features || [];
 
-            // DEBUG: Check mapping
-            console.log("Mapping Check 'Zürich':", CITY_COUNTRY_MAPPING["Zürich"]);
-            console.log("Mapping Check 'Zurich':", CITY_COUNTRY_MAPPING["Zurich"]);
-
-            // Helper to ensure array
-            function toArray(val) {
-                if (!val) return [];
-                if (Array.isArray(val)) return val;
-
-                // Handle "BC" explicitly (e.g. "500 BC" -> -500)
-                if (typeof val === 'string' && /bc/i.test(val)) {
-                    const num = parseInt(val.replace(/[^0-9]/g, ''));
-                    if (!isNaN(num)) return [-num];
-                }
-                if (typeof val === 'string' && val.includes('-')) {
-                    const parts = val.split('-');
-                    const s = parseInt(parts[0]);
-                    const e = parseInt(parts[1]);
-                    if (!isNaN(s) && !isNaN(e)) {
-                        const r = [];
-                        for (let i = s; i <= e; i++) r.push(i);
-                        return r;
-                    }
-                }
-                return [val];
-            }
-
-            const COUNTRY_MAP = {
-                "AT": "Austria", "DE": "Germany", "CH": "Switzerland", "FR": "France",
-                "IT": "Italy", "BE": "Belgium", "NL": "Netherlands", "GB": "United Kingdom",
-                "UK": "United Kingdom", "US": "United States of America", "USA": "United States of America",
-                "ES": "Spain", "PT": "Portugal", "PL": "Poland", "CZ": "Czech Republic",
-                "HU": "Hungary", "SI": "Slovenia", "HR": "Croatia", "GR": "Greece",
-                "RU": "Russia", "JP": "Japan", "CN": "China", "TR": "Turkey",
-                "EG": "Egypt", "MX": "Mexico", "SK": "Slovakia",
-                "Nebraska": "United States of America",
-                "Massachusetts": "United States of America",
-                "California": "United States of America",
-                "New York": "United States of America",
-                "Pennsylvania": "United States of America",
-                "Virginia": "United States of America",
-                "Illinois": "United States of America",
-                "Ohio": "United States of America"
-            };
-            const countryNames = Object.values(COUNTRY_MAP);
-
-            // Helper to clean place strings
-            function resolvePlace(p) {
-                if (!p) return { city: null, country: null };
-
-                // Skip known TEI label strings and "Unknown Place" indicators
-                const PLACE_BLOCKLIST = new Set([
-                    "Findspot.", "Findspot", "findspot",
-                    "Unknown", "unknown", "unspecified",
-                    "o.O.", "o.O", "o. O.", "[o.O.]", "[o. O.]",
-                    "s.l.", "sine loco", "no place", "Unknown."
-                ]);
-                if (PLACE_BLOCKLIST.has(p.trim())) return { city: null, country: null };
-
-                // Strip surrounding noise: brackets, parens, quotes, trailing punctuation
-                p = p.trim().replace(/^[\(\[\\'"]+|[\)\]\\'":,;.\?]+$/g, '').trim();
-
-                let candidateCity = null;
-                let candidateCountry = null;
-
-                // Check if it's "City, Country" or "City, State"
-                if (p.includes(',')) {
-                    const parts = p.split(',').map(s => s.trim());
-                    // Assume last part is Country or State
-                    const potentialCountry = parts[parts.length - 1];
-                    const potentialCity = parts[0]; // Take first part as city
-
-                    if (countryNames.includes(potentialCountry)) {
-                        candidateCountry = potentialCountry;
-                    } else if (COUNTRY_MAP[potentialCountry]) {
-                        candidateCountry = COUNTRY_MAP[potentialCountry];
-                    }
-
-                    candidateCity = potentialCity;
-                } else {
-                    // Single string
-                    if (countryNames.includes(p)) {
-                        candidateCountry = p;
-                    } else if (COUNTRY_MAP[p]) {
-                        candidateCountry = COUNTRY_MAP[p];
-                    } else {
-                        candidateCity = p;
-                    }
-                }
-
-                const resolved = { city: candidateCity, country: candidateCountry };
-                if (resolved.city) {
-                    resolved.city = CITY_UNIFICATION[resolved.city] || resolved.city;
-                }
-                return resolved;
-            }
-
-            // Create mapping for fast tag index lookups
-            const tagFileToIndex = new Map();
-            FILE_INDEX.forEach((f, i) => tagFileToIndex.set(f, i));
-
-            // Process RAW_DATA from Document Metadata
-            const cols = docsData.columns;
-            const dicts = docsData.dictionaries;
-            const numDocs = cols.id.length;
-
-            RAW_DATA = [];
-            for (let i = 0; i < numDocs; i++) {
-                const d_raw = {
-                    id: cols.id[i],
-                    ed_id: dicts.ed_id[cols.ed_id[i]],
-                    title: cols.title[i],
-                    date_cre: cols.date_cre[i],
-                    date_cre_inf: cols.date_cre_inf[i],
-                    date_pub: cols.date_pub[i],
-                    date_pub_inf: cols.date_pub_inf[i],
-                    date_con: cols.date_con[i],
-                    date_con_inf: cols.date_con_inf[i],
-                    lang: dicts.lang[cols.lang[i]],
-                    lang_inf: cols.lang_inf[i],
-                    geo_cre: cols.geo_cre[i],
-                    geo_pub: cols.geo_pub[i],
-                    geo_con: cols.geo_con[i],
-                    features: cols.features[i]
-                };
-
-                // Geo Resolution
-                function extractGeo(geoArray) {
-                    let country = null;
-                    let city = null;
-                    for (const p of (geoArray || [])) {
-                        const resolved = resolvePlace(p);
-                        if (resolved.country && !country) country = resolved.country;
-                        if (resolved.city && !city) city = resolved.city;
-                        if (country && city) break;
-                    }
-                    return { country, city };
-                }
-
-                const geoCre = extractGeo(d_raw.geo_cre);
-                const geoPub = extractGeo(d_raw.geo_pub);
-                const geoCtx = extractGeo(d_raw.geo_con);
-
-                // Pre-calculate tag indices for this doc
-                const tagIdxs = [];
-                const fullIdx = tagFileToIndex.get(d_raw.id);
-                if (fullIdx !== undefined) tagIdxs.push(fullIdx);
-                const baseIdx = tagFileToIndex.get(d_raw.id.split('/').pop());
-                if (baseIdx !== undefined && baseIdx !== fullIdx) tagIdxs.push(baseIdx);
-
-                RAW_DATA.push({
-                    id: d_raw.id,
-                    filename: d_raw.id.split('/').pop(),
-                    edition: d_raw.ed_id,
-                    title: d_raw.title,
-                    lang: d_raw.lang || "unknown",
-                    langInferred: d_raw.lang_inf || false,
-
-                    geo_creation: geoCre,
-                    geo_publication: geoPub,
-                    geo_contextual: geoCtx,
-
-                    get country() { return this['geo_' + FILTERS.geoSource].country; },
-                    get city() { return this['geo_' + FILTERS.geoSource].city; },
-                    countryInferred: false,
-                    cityInferred: false,
-
-                    years_creation: toArray(d_raw.date_cre),
-                    years_publication: toArray(d_raw.date_pub),
-                    years_contextual: toArray(d_raw.date_con),
-
-                    get years() { return this['years_' + FILTERS.dateSource]; },
-                    get contextualYears() { return []; },
-
-                    yearInferred: d_raw.date_pub_inf || false,
-                    contextualInferred: false,
-                    features: d_raw.features || {},
-                    tagIdxs: tagIdxs,
-                    // extra for filters
-                    gender: null,
-                    doc_type: null
-                });
-            }
-
-            FILTERED_DATA = RAW_DATA;
-
-            // COMPUTE TOTAL COUNTS FOR TOPICS (for stable sorting)
-            // If Document Mode, use document counts. If Edition Mode, use edition counts.
-            // Since we want a stable global hierarchy order, let's sum BOTH or pick one.
-            // Let's us Document Counts as primary if available, else editions.
-            const topicTotalCounts = new Map();
-
-            // Use Doc Topics for Total Counts if loaded
-            if (Object.keys(DOCUMENT_TOPICS).length > 0) {
-                Object.values(DOCUMENT_TOPICS).forEach(tInfo => {
-                    const tid = tInfo.topic_id;
-                    if (tid) topicTotalCounts.set(tid, (topicTotalCounts.get(tid) || 0) + 1);
-                });
-            } else {
-                // Fallback to Edition Topics
-                Object.values(EDITION_TOPICS).forEach(edTopics => {
-                    for (const [topicId, count] of Object.entries(edTopics)) {
-                        if (count > 0) {
-                            topicTotalCounts.set(topicId, (topicTotalCounts.get(topicId) || 0) + count);
-                        }
-                    }
-                });
-            }
-
-            // Attach total_count to each topic in hierarchy
-            function attachCounts(topics) {
-                topics.forEach(t => {
-                    t.total_count = topicTotalCounts.get(t.id) || 0;
-                    if (t.subtopics && t.subtopics.length > 0) {
-                        attachCounts(t.subtopics);
-                    }
-                });
-            }
-            attachCounts(TOPIC_HIERARCHY);
+            // Set up editions metadata
+            EDITION_METADATA = {};
+            dbMeta.editions.forEach(ed => {
+                EDITION_METADATA[ed.name] = ed;
+            });
 
             initMap();
             renderTopicHierarchy(topicRes);
             updateDashboard();
         }).catch(err => {
-            console.error(err);
-            document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data.<br>${err}</div>`;
+            console.error("Error loading data:", err);
+            document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data from SQL database.<br>${err}</div>`;
         });
 
         // --- Core Logic ---
@@ -758,7 +520,7 @@
             FILTERS.yearRange = null; // Reset year filter when switching axes
             document.getElementById('btn-date-cre').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
             document.getElementById('btn-date-pub').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
-            document.getElementById('btn-date-con').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            document.getElementById('btn-date-con').className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
 
             const btnId = `btn-date-${source.substring(0, 3)}`;
             document.getElementById(btnId).className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
@@ -778,277 +540,65 @@
             updateDashboard();
         }
 
-        function updateDashboard() {
+        async function updateDashboard() {
+            document.getElementById('statsline').innerHTML = "Loading data from database...";
 
-            // Function to check filters
-            const check = (d, skip = null) => {
-                if (skip !== 'lang' && FILTERS.lang && d.lang !== FILTERS.lang) return false;
-                if (skip !== 'country' && FILTERS.country && d.country !== FILTERS.country) return false;
-                if (skip !== 'city' && FILTERS.city && d.city !== FILTERS.city) return false;
-                if (skip !== 'gender' && FILTERS.gender && (!d.gender || !d.gender.includes(FILTERS.gender))) return false;
-                if (skip !== 'doc_type' && FILTERS.doc_type && d.doc_type !== FILTERS.doc_type) return false;
-
-                // Feature Filter (Dual State; also supports compound multi-tag custom filters)
-                if (skip !== 'feature' && FILTERS.feature) {
-                    const { key, value } = FILTERS.feature;
-                    const isTrue = d.features && d.features[key];
-                    // If we want True, and it's not True -> False
-                    if (value === true && !isTrue) return false;
-                    // If we want False, and it IS True -> False
-                    if (value === false && isTrue) return false;
-                }
-
-                // Topic Filter
-                if (skip !== 'topic' && FILTERS.topicId) {
-                    const tid = FILTERS.topicId;
-                    if (VIEW_MODE === 'document') {
-                        // Document Mode: Check DOCUMENT_TOPICS
-                        const docTopic = DOCUMENT_TOPICS[d.filename];
-
-                        // For simplicity: Check Direct Match
-                        if (!docTopic || docTopic.topic_id !== tid) return false;
-                    } else {
-                        // Edition Mode: Check EDITION_TOPICS
-                        const topics = EDITION_TOPICS[d.edition];
-                        if (!topics || !topics[tid]) return false;
-                    }
-                }
-
-                // Year Range Filter (Brush)
-                if (skip !== 'year' && FILTERS.yearRange) {
-                    const [start, end] = FILTERS.yearRange;
-                    if (!d.years || d.years.length === 0) return false;
-                    const hasOverlap = d.years.some(y => y >= start && y <= end);
-                    if (!hasOverlap) return false;
-                }
-
-                return true;
-            };
-
-            // Main Data (Applies ALL filters)
-            FILTERED_DATA = RAW_DATA.filter(d => check(d));
-
-            // Lang Data (Applies all EXCEPT Lang) - FOR LANG CHART ONLY
-            const LANG_DATA = RAW_DATA.filter(d => check(d, 'lang'));
-
-            // Feature Data (Applies all EXCEPT Feature) - FOR FEATURE CHART ONLY
-            const FEATURE_DATA = RAW_DATA.filter(d => check(d, 'feature'));
-
-
-            // --- Aggregation Helper ---
-            const mode = VIEW_MODE;
-            const initStatObj = () => ({ total: 0, confirmed: 0, inferred: 0 });
-
-            // We need 3 Stats Objects: Main, Lang, Feature
-
-            function computeStats(dataSet, options = {}) {
-                const s = {
-                    langs: {},
-                    countries: {},
-                    cities: {},
-                    genders: {},
-                    years: {},
-                    features: {},
-                    editions: new Set(),
-                    is_letter: 0
-                };
-
-                // Temp Sets for Edition Mode
-                const edSets = {
-                    langs: {},
-                    countries: {},
-                    cities: {},
-                    years: {},
-                    features: {},
-                    is_letter: new Set()
-                };
-
-                // Processing Loop
-                dataSet.forEach(d => {
-                    s.editions.add(d.edition);
-
-                    if (mode === 'document') {
-                        // Document Mode aggregation
-                        // Language (Only if we want it)
-                        if (!options.skipLang) {
-                            if (!s.langs[d.lang]) s.langs[d.lang] = initStatObj();
-                            s.langs[d.lang].total++;
-                            if (d.langInferred) s.langs[d.lang].inferred++;
-                            else s.langs[d.lang].confirmed++;
-                        }
-
-                        // Country
-                        if (!options.skipGeo && d.country) {
-                            if (!s.countries[d.country]) s.countries[d.country] = initStatObj();
-                            s.countries[d.country].total++;
-                            if (d.countryInferred) s.countries[d.country].inferred++;
-                            else s.countries[d.country].confirmed++;
-                        }
-                        // City
-                        if (!options.skipGeo && d.city) {
-                            if (!s.cities[d.city]) s.cities[d.city] = initStatObj();
-                            s.cities[d.city].total++;
-                            if (d.cityInferred) s.cities[d.city].inferred++;
-                            else s.cities[d.city].confirmed++;
-                        }
-                        // Features
-                        if (!options.skipFeatures) {
-                            Object.keys(d.features).forEach(f => {
-                                s.features[f] = (s.features[f] || 0) + 1;
-                            });
-                            if (d.features['is_letter']) s.is_letter++;
-                        }
-                        // Years
-                        if (!options.skipTime) {
-                            const yearsArr = d['years_' + FILTERS.dateSource];
-                            if (yearsArr && yearsArr.length > 0) {
-                                yearsArr.forEach(y => {
-                                    if (!s.years[y]) s.years[y] = { count: 0 };
-                                    s.years[y].count++;
-                                });
-                            }
-                        }
-
-                    } else {
-                        // EDITION MODE (Using Sets)
-                        // Language
-                        if (!options.skipLang) {
-                            if (!edSets.langs[d.lang]) edSets.langs[d.lang] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.langInferred) edSets.langs[d.lang].inferred.add(d.edition);
-                            else edSets.langs[d.lang].confirmed.add(d.edition);
-                        }
-                        // Country
-                        if (!options.skipGeo && d.country) {
-                            if (!edSets.countries[d.country]) edSets.countries[d.country] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.countryInferred) edSets.countries[d.country].inferred.add(d.edition);
-                            else edSets.countries[d.country].confirmed.add(d.edition);
-                        }
-                        // City
-                        if (!options.skipGeo && d.city) {
-                            if (!edSets.cities[d.city]) edSets.cities[d.city] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.cityInferred) edSets.cities[d.city].inferred.add(d.edition);
-                            else edSets.cities[d.city].confirmed.add(d.edition);
-                        }
-                        // Years
-                        if (!options.skipTime) {
-                            const yearsArr = d['years_' + FILTERS.dateSource];
-                            if (yearsArr) {
-                                yearsArr.forEach(y => {
-                                    if (!edSets.years[y]) edSets.years[y] = new Set();
-                                    edSets.years[y].add(d.edition);
-                                });
-                            }
-                        }
-                        // Features
-                        if (!options.skipFeatures) {
-                            Object.keys(d.features).forEach(f => {
-                                addToSet(edSets.features, f, d.edition);
-                                if (f === 'is_letter') edSets.is_letter.add(d.edition);
-                            });
-                        }
-                    }
-                }); // End forEach
-
-                // Finalize Edition Sets if needed
-                if (mode !== 'document') {
-                    const finalize = (source, target) => {
-                        for (let k in source) {
-                            const c = source[k].confirmed;
-                            const i = source[k].inferred;
-                            const all = new Set([...c, ...i]);
-                            target[k] = { total: all.size, confirmed: c.size, inferred: i.size };
-                        }
-                    };
-                    if (!options.skipLang) finalize(edSets.langs, s.langs);
-                    if (!options.skipGeo) {
-                        finalize(edSets.countries, s.countries);
-                        finalize(edSets.cities, s.cities);
-                    }
-                    if (!options.skipTime) {
-                        for (let k in edSets.years) {
-                            s.years[k] = {
-                                count: edSets.years[k].size
-                            };
-                        }
-                    }
-
-                    if (!options.skipFeatures) {
-                        for (let k in edSets.features) s.features[k] = edSets.features[k].size;
-                        s.is_letter = edSets.is_letter.size;
-                    }
-                }
-
-                return s;
-            }
-
-            // 1. Calculate Main Stats (Everything but Langs/Features is strict)
-            const mainStats = computeStats(FILTERED_DATA, { skipLang: true, skipFeatures: true });
-
-            // 2. Calculate Lang Stats (Use LANG_DATA)
-            const langStats = computeStats(LANG_DATA, { skipGeo: true, skipTime: true, skipFeatures: true });
-
-            // 3. Calculate Feature Stats (Use FEATURE_DATA)
-            const featureStats = computeStats(FEATURE_DATA, { skipGeo: true, skipTime: true, skipLang: true });
-
-
-            // Merge for rendering
-            // We use mainStats for everything effectively, except we inject the langs from langStats
-            mainStats.langs = langStats.langs;
-            mainStats.features = featureStats.features;
-            // Note: computeStats for features returns simple object map in .features,
-            // but for Langs it returns the complex {total, confirmed...} object.
-            // renderFeatureChart expects simple object. computeStats returns simple object loop (lines 483 / 553+578)
-            // Wait, computeStats line 483: s.features[f] = number. Correct.
-
-            // --- Calculate Topics (Using Filtered Data) ---
-            const activeTopics = new Map();
-
-            if (VIEW_MODE === 'document') {
-                // Iterate Filtered Documents to Count Topics
-                FILTERED_DATA.forEach(d => {
-                    const tInfo = DOCUMENT_TOPICS[d.filename];
-
-                    if (tInfo) {
-                        const tid = tInfo.topic_id;
-                        if (tid) {
-                            activeTopics.set(tid, (activeTopics.get(tid) || 0) + 1);
-                        }
-                    }
+            try {
+                const res = await fetch('/api/dashboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filters: FILTERS,
+                        viewMode: VIEW_MODE,
+                        customFilters: customFilterPayload()
+                    })
                 });
-            } else {
-                // Edition Mode
-                mainStats.editions.forEach(edId => {
-                    if (EDITION_TOPICS[edId]) {
-                        for (const [tId, count] of Object.entries(EDITION_TOPICS[edId])) {
-                            if (count > 0) {
-                                activeTopics.set(tId, (activeTopics.get(tId) || 0) + 1);
-                            }
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Dashboard API returned an error');
+
+                renderStatsLine(data.totalDocs, data.totalEditions);
+                renderLangChart(data.langs);
+                renderCityList(data.cities);
+
+                const totalCount = (VIEW_MODE === 'document') ? data.totalDocs : data.totalEditions;
+                renderFeatureChart(data.features, totalCount);
+                renderTimeChart(data.years);
+                updateMap(data.cities);
+                renderEditionList(new Set(data.editions));
+
+                // Topics hierarchy counts
+                const activeTopics = new Map(Object.entries(data.topics || {}));
+
+                // Attach counts to hierarchy
+                function attachCounts(topics) {
+                    topics.forEach(t => {
+                        t.total_count = activeTopics.get(t.id) || 0;
+                        if (t.subtopics && t.subtopics.length > 0) {
+                            attachCounts(t.subtopics);
                         }
-                    }
-                });
+                    });
+                }
+                attachCounts(TOPIC_HIERARCHY);
+                renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
+
+            } catch (err) {
+                console.error("Error updating dashboard:", err);
+                document.getElementById('statsline').innerHTML =
+                    `<span class="text-rose-400">${escapeHtml(err.message || 'Failed to connect to database API.')}</span>`;
             }
-
-            renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
-
-            // 3. Render
-            renderStatsLine(FILTERED_DATA.length, mainStats.editions.size);
-            renderLangChart(mainStats.langs); // This now contains the "Wide" distribution
-
-            renderCityList(mainStats.cities);
-            const totalCount = (VIEW_MODE === 'document') ? FEATURE_DATA.length : featureStats.editions.size;
-            renderFeatureChart(mainStats.features, totalCount);
-            renderTimeChart(mainStats.years);
-
-            updateMap(mainStats.cities);
-
-            renderEditionList(mainStats.editions);
-
         }
 
-        function toggleInferredDate(checked) {
-            FILTERS.includeInferredDate = checked;
-            updateDashboard();
+        function renderStatsLine(count, editionsCount) {
+            document.getElementById('statsline').innerHTML = 
+                `<b>${count.toLocaleString()}</b> documents across <b>${editionsCount.toLocaleString()}</b> digital editions loaded from database.`;
         }
+
+        // NOTE: the old `includeInferredDate` toggle was removed. The schema's
+        // document_time_entities table carries no inference flag (unlike
+        // document_languages.inference_type), so the distinction cannot be made
+        // in SQL. Re-adding it means adding an is_inferred column and
+        // backfilling it from dashboard_data.json's date_*_inf fields.
 
         function toggleContextual() {
             SHOW_CONTEXTUAL = !SHOW_CONTEXTUAL;
@@ -1079,12 +629,8 @@
                 country: null,
                 city: null,
                 yearRange: null,
-                gender: null,
-                doc_type: null,
                 feature: null,
                 topicId: null,
-                ids: null,
-                includeInferredDate: true,
                 dateSource: 'contextual',
                 geoSource: 'contextual'
             };
@@ -1148,16 +694,19 @@
         }
 
         // --- SEARCH INTEGRATION ---
+        let SEARCH_APPLIED = false;
+
         function clearSearch() {
             const input = document.getElementById('searchInput');
             input.value = '';
             document.getElementById('clearSearch').classList.add('hidden');
             document.getElementById('searchMessage').classList.add('hidden');
             document.getElementById('searchStatus').classList.add('hidden');
-            // If search applied a filter, reset it
-            if (FILTERS.search) {
-                FILTERS.search = null;
-                updateDashboard();
+            // /api/interpret only ever sets the ordinary facet filters, so
+            // clearing the query means clearing whatever those were set to.
+            if (SEARCH_APPLIED) {
+                SEARCH_APPLIED = false;
+                resetFilters();
             }
             input.focus();
         }
@@ -1205,6 +754,7 @@
         }
 
         function applyBackendFacets(facets) {
+            SEARCH_APPLIED = true;
             // Reset filters logic
             FILTERS.country = null;
             FILTERS.city = null;
@@ -1743,7 +1293,8 @@
 
             const entries = Object.entries(cities)
                 .map(([name, val]) => ({ name, ...val }))
-                .filter(c => CITY_COORDS[c.name]) // Hide non-geocoded items from side facet
+                // Hide non-geocoded items from side facet (coords come from the DB API)
+                .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
                 .sort((a, b) => b.total - a.total)
                 .slice(0, 50);
 
@@ -1824,12 +1375,12 @@
 
                 if (count === 0) continue;
 
-                const coords = CITY_COORDS[cityName];
-                if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') continue;
+                const coords = stats; // Coordinates are provided directly by DB API
+                if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) continue;
 
                 let radius = 6;
 
-                const marker = L.circleMarker([coords.lat, coords.lon], {
+                const marker = L.circleMarker([coords.lat, coords.lng], {
                     radius: radius,
                     fillColor: '#0ea5e9',
                     color: '#0369a1',

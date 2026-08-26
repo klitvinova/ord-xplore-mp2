@@ -1,8 +1,14 @@
 import { OpenAI } from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+function getOpenAI() {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || 'dummy-key-for-initialization',
+    });
+  }
+  return openai;
+}
 
 const SYSTEM_PROMPT = `You are a deterministic information extraction system.
 
@@ -76,7 +82,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },

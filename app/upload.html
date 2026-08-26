@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IVDA Dataset Curation</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Inter for Clean Dashboard Aesthetics -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f9fafb; /* bg-gray-50 */
+      color: #1f2937; /* text-gray-800 */
+    }
+    .dashboard-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between py-4 px-4">
+  
+  <header class="max-w-4xl w-full mx-auto mb-3 shrink-0 flex items-center justify-between border-b border-gray-200 pb-4">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V4a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-gray-900 tracking-tight">IVDA Dataset Curation</h1>
+        <p class="text-xs text-gray-500">Registry management & TEI XML ingestion pipeline</p>
+      </div>
+    </div>
+    <div class="inline-flex items-center space-x-1.5 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-indigo-100">
+      <span class="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse"></span>
+      <span>Active Server Mode</span>
+    </div>
+  </header>
+
+  <main class="flex-grow max-w-4xl w-full mx-auto mt-2 mb-6 px-4">
+    <div id="mainCard" class="w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col gap-8">
+      
+      <!-- Left Column: Forms and Lists -->
+      <div class="flex-1 flex flex-col min-w-0">
+        
+        <!-- Ingestion Form Panel (hidden by default) -->
+        <div id="panelUpload" class="hidden space-y-6">
+          <button onclick="showCurationRegistry()" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 focus:outline-none mb-2 w-fit">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Back to Curation Registry
+          </button>
+
+          <div>
+            <label for="editionSelect" class="block text-sm font-medium text-gray-700 mb-1.5">Digital Edition</label>
+            <div id="selectEditionContainer" class="relative">
+              <select id="editionSelect" class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 mb-2">
+                <option value="" disabled selected>Select an existing edition...</option>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="flex items-center gap-1.5 mb-2">
+              <span class="text-xs text-gray-400">or</span>
+              <button id="toggleEditionBtn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium hover:underline focus:outline-none" onclick="toggleCustomEditionMode()">Create a new edition</button>
+            </div>
+            
+            <!-- New Edition Fields -->
+            <div id="newEditionFields" class="hidden space-y-3">
+              <input type="text" id="customEdition" placeholder="Enter new edition name (e.g. cody_archive)..." class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900" />
+              <textarea id="customEditionDesc" placeholder="Enter edition description..." class="w-full h-20 bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 resize-none"></textarea>
+              <input type="text" id="customEditionWeb" placeholder="Enter website URL (optional)..." class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">TEI XML Documents</label>
+            <div id="dropzone" class="border-2 border-dashed border-gray-300 hover:border-indigo-500 bg-gray-50 hover:bg-indigo-50/20 rounded-xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center group">
+              <svg class="w-10 h-10 text-gray-400 group-hover:text-indigo-500 transition-colors duration-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+              </svg>
+              <p class="text-sm font-medium text-gray-700">Drag and drop XML files here</p>
+              <p class="text-xs text-gray-400 mt-1">or click to browse local files</p>
+              <input type="file" id="fileInput" multiple accept=".xml" class="hidden" />
+            </div>
+          </div>
+
+          <button id="uploadBtn" onclick="processFiles()" class="w-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold py-2.5 px-4 rounded-lg shadow-sm active:scale-[0.99] transition-all duration-100 focus:outline-none text-sm">
+            Run Ingestion Pipeline
+          </button>
+        </div>
+
+        <!-- Curation/Dataset Management Panel -->
+        <div id="panelManage" class="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+          <!-- Dynamically populated management content -->
+          <div id="manageContent" class="space-y-3">
+            <div class="text-gray-400 text-xs text-center py-16">
+              Loading active dataset information...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Live Logging Status & Transparency -->
+      <div id="queueColumn" class="w-full md:w-96 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-6">
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 flex justify-between items-center">
+          <span>Processing Queue</span>
+          <span id="queueCount" class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">0</span>
+        </h3>
+        <div id="logQueue" class="flex-1 overflow-y-auto max-h-[400px] md:max-h-none space-y-3 pr-1 text-sm text-gray-700">
+          <div class="text-gray-400 text-xs text-center py-16">
+            No files currently in queue.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="max-w-4xl w-full mx-auto text-center shrink-0 border-t border-gray-200 pt-4 flex flex-col md:flex-row justify-between items-center text-xs text-gray-400">
+    <p>&copy; 2026 IVDA ORD Xplore</p>
+    <a href="index.html" class="mt-2 md:mt-0 text-indigo-600 hover:text-indigo-800 font-semibold hover:underline inline-flex items-center gap-1">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+      Back to Explorer Dashboard
+    </a>
+  </footer>
+
+  <script>
+    let filesList = [];
+    let isCustomEditionMode = false;
+    const TOPICS_MAP = new Map();
+
+    // Load existing editions list on load
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const res = await fetch('/api/dashboard');
+        if (res.ok) {
+          const data = await res.json();
+          const selectEl = document.getElementById('editionSelect');
+          data.editions.forEach(ed => {
+            const opt = document.createElement('option');
+            opt.value = ed.name;
+            opt.textContent = ed.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            selectEl.appendChild(opt);
+          });
+
+          if (data.topics) {
+            data.topics.forEach(t => {
+              TOPICS_MAP.set(t.id, t.name);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load editions:', err);
+      }
+      showCurationRegistry();
+    });
+
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-indigo-500', 'bg-indigo-500/5');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/5');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/5');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+    });
+
+    function handleFiles(files) {
+      for (const file of files) {
+        if (file.name.toLowerCase().endsWith('.xml')) {
+          if (!filesList.some(f => f.name === file.name)) {
+            filesList.push(file);
+          }
+        }
+      }
+      renderQueue();
+    }
+
+    function renderQueue() {
+      const container = document.getElementById('logQueue');
+      const countEl = document.getElementById('queueCount');
+      countEl.textContent = filesList.length;
+
+      if (filesList.length === 0) {
+        container.innerHTML = `<div class="text-gray-400 text-xs text-center py-16">No files currently in queue.</div>`;
+        return;
+      }
+
+      container.innerHTML = '';
+      filesList.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'p-3.5 rounded-lg bg-white border border-gray-200 shadow-sm transition-all duration-200';
+        item.id = `item-${index}`;
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="truncate pr-4 flex-1">
+              <p class="font-semibold text-xs text-gray-900 truncate">${file.name}</p>
+              <p class="text-[10px] text-gray-400 mt-0.5">${(file.size / 1024).toFixed(1)} KB</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="status-badge text-[9px] font-bold uppercase tracking-wider text-gray-400 bg-gray-150 border border-gray-200 px-1.5 py-0.5 rounded">Ready</span>
+              <button class="text-gray-400 hover:text-red-500 text-sm focus:outline-none ml-1 font-bold" onclick="removeQueueItem(${index})">&times;</button>
+            </div>
+          </div>
+          <div class="details-section hidden" id="details-${index}"></div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function removeQueueItem(index) {
+      filesList.splice(index, 1);
+      renderQueue();
+    }
+
+    function toggleCustomEditionMode() {
+      const selectContainer = document.getElementById('selectEditionContainer');
+      const fieldsContainer = document.getElementById('newEditionFields');
+      const toggleBtn = document.getElementById('toggleEditionBtn');
+      const customEl = document.getElementById('customEdition');
+      isCustomEditionMode = !isCustomEditionMode;
+
+      if (isCustomEditionMode) {
+        selectContainer.classList.add('hidden');
+        fieldsContainer.classList.remove('hidden');
+        toggleBtn.textContent = 'Select an existing edition';
+        customEl.focus();
+      } else {
+        selectContainer.classList.remove('hidden');
+        fieldsContainer.classList.add('hidden');
+        toggleBtn.textContent = 'Create a new edition';
+      }
+    }
+
+    function toggleDetails(index) {
+      const el = document.getElementById(`details-${index}`);
+      if (el) el.classList.toggle('hidden');
+    }
+
+    function buildDatesList(dates) {
+      let html = '';
+      if (dates.creation && dates.creation.length > 0) {
+        const unique = [...new Set(dates.creation)];
+        html += `<div><span class="text-gray-400">Creation:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      if (dates.publication && dates.publication.length > 0) {
+        const unique = [...new Set(dates.publication)];
+        html += `<div><span class="text-gray-400">Publication:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      if (dates.contextual && dates.contextual.length > 0) {
+        const unique = [...new Set(dates.contextual)];
+        html += `<div><span class="text-gray-400">Contextual:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      return html || '<span class="text-gray-400 italic">No dates resolved</span>';
+    }
+
+    function buildGeosList(geos) {
+      let html = '';
+      if (geos.creation && geos.creation.length > 0) {
+        const unique = [...new Set(geos.creation)];
+        html += `<div><span class="text-gray-400">Creation:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      if (geos.publication && geos.publication.length > 0) {
+        const unique = [...new Set(geos.publication)];
+        html += `<div><span class="text-gray-400">Publication:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      if (geos.contextual && geos.contextual.length > 0) {
+        const unique = [...new Set(geos.contextual)];
+        html += `<div><span class="text-gray-400">Contextual:</span> <span class="font-medium text-gray-800">${unique.join(', ')}</span></div>`;
+      }
+      return html || '<span class="text-gray-400 italic">No places resolved</span>';
+    }
+
+    async function processFiles() {
+      if (filesList.length === 0) {
+        alert('Please add at least one TEI XML file first.');
+        return;
+      }
+
+      let edName = '';
+      if (isCustomEditionMode) {
+        edName = document.getElementById('customEdition').value.trim();
+      } else {
+        edName = document.getElementById('editionSelect').value;
+      }
+
+      if (!edName) {
+        alert('Please select or enter an edition name.');
+        return;
+      }
+
+      const formattedEdition = edName.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+      if (!formattedEdition) {
+        alert('Invalid edition name format. Use letters, numbers, and spaces.');
+        return;
+      }
+
+      const uploadBtn = document.getElementById('uploadBtn');
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Processing...';
+
+      for (let i = 0; i < filesList.length; i++) {
+        const file = filesList[i];
+        const itemEl = document.getElementById(`item-${i}`);
+        if (!itemEl) continue;
+
+        const badge = itemEl.querySelector('.status-badge');
+        badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded animate-pulse';
+        badge.textContent = 'Analyzing';
+
+        try {
+          const content = await readFileAsText(file);
+          
+          // --- STEP 1: PRE-ANALYSIS ROUTE ---
+          const analyzeRes = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              content: content
+            })
+          });
+
+          if (!analyzeRes.ok) {
+            throw new Error(`Pre-analysis failed status ${analyzeRes.status}`);
+          }
+
+          const analyzeData = await analyzeRes.json();
+
+          if (analyzeData.suitable) {
+            // Document is suitable -> run standard ingestion!
+            badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded animate-pulse';
+            badge.textContent = 'Ingesting';
+            await runIngestAPI(file, content, formattedEdition, i, badge, itemEl);
+          } else {
+            // Document is structurally different -> show pre-analysis report
+            badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded';
+            badge.textContent = 'Unsuitable';
+
+            const detailsContainer = itemEl.querySelector('.details-section');
+            detailsContainer.innerHTML = `
+              <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700 space-y-2.5">
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 space-y-1">
+                  <span class="block font-bold text-amber-800 uppercase tracking-wider text-[9px]">Pre-Analysis Suitability Warning</span>
+                  <p class="font-semibold text-xs mt-0.5">Detected Structure: ${analyzeData.detectedType}</p>
+                  <p class="font-normal text-[11px] leading-relaxed text-amber-800">${analyzeData.reason}</p>
+                </div>
+
+                <div>
+                  <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Information Found</span>
+                  <ul class="list-disc pl-4 space-y-1 text-gray-700 text-[11px]">
+                    ${analyzeData.extractableData.map(d => `<li>${d}</li>`).join('')}
+                  </ul>
+                </div>
+
+                <div>
+                  <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Alternative Suggestions & Recommendations</span>
+                  <ul class="list-decimal pl-4 space-y-1 text-gray-700 text-[11px] font-medium">
+                    ${analyzeData.suggestions.map(s => `<li>${s}</li>`).join('')}
+                  </ul>
+                </div>
+
+                <div class="pt-2 flex justify-end">
+                  <button onclick="forceIngest(${i})" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    Force Ingest Anyway
+                  </button>
+                </div>
+              </div>
+            `;
+            detailsContainer.classList.remove('hidden');
+          }
+        } catch (err) {
+          badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded';
+          badge.textContent = 'Failed';
+          badge.title = err.message || 'Unknown error occurred';
+        }
+      }
+
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'Run Ingestion Pipeline';
+    }
+
+    async function forceIngest(index) {
+      const file = filesList[index];
+      const itemEl = document.getElementById(`item-${index}`);
+      if (!itemEl) return;
+
+      const badge = itemEl.querySelector('.status-badge');
+      badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded animate-pulse';
+      badge.textContent = 'Ingesting';
+
+      let edName = '';
+      if (isCustomEditionMode) {
+        edName = document.getElementById('customEdition').value.trim();
+      } else {
+        edName = document.getElementById('editionSelect').value;
+      }
+      const formattedEdition = edName.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+      try {
+        const content = await readFileAsText(file);
+        await runIngestAPI(file, content, formattedEdition, index, badge, itemEl);
+      } catch (err) {
+        badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded';
+        badge.textContent = 'Failed';
+        badge.title = err.message || 'Unknown error occurred';
+      }
+    }
+
+    async function runIngestAPI(file, content, formattedEdition, i, badge, itemEl) {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          content: content,
+          edition: formattedEdition,
+          editionDescription: isCustomEditionMode ? document.getElementById('customEditionDesc').value.trim() : undefined,
+          editionWebsite: isCustomEditionMode ? document.getElementById('customEditionWeb').value.trim() : undefined
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        const warnings = data.warnings || [];
+        const detailsContainer = itemEl.querySelector('.details-section');
+
+        if (warnings.length > 0) {
+          badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded';
+          badge.textContent = 'Partial';
+          badge.title = warnings.join('\n');
+        } else {
+          badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded';
+          badge.textContent = 'Success';
+        }
+
+        // Create dynamic show/hide details triggers (only if not already present)
+        const headerRight = itemEl.querySelector('.flex.items-center.justify-between .flex.items-center');
+        if (!headerRight.querySelector('.details-btn')) {
+          const detailsBtn = document.createElement('button');
+          detailsBtn.className = 'details-btn text-indigo-600 hover:text-indigo-800 text-[10px] font-semibold underline ml-2 focus:outline-none';
+          detailsBtn.textContent = 'Details';
+          detailsBtn.onclick = () => toggleDetails(i);
+          headerRight.insertBefore(detailsBtn, headerRight.firstChild);
+        }
+
+        // Populate Collapsible Metadata card
+        detailsContainer.innerHTML = `
+          <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700 space-y-2.5">
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px]">Extracted Title</span>
+              <span class="font-medium text-gray-900 block truncate" title="${data.metadata.title}">${data.metadata.title}</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px]">Language Detection</span>
+                <span class="font-medium text-gray-900">${data.metadata.language.toUpperCase()} ${data.metadata.languageInferred ? '<span class="text-amber-600 font-normal">(Inferred)</span>' : '<span class="text-emerald-600 font-normal">(Confirmed)</span>'}</span>
+              </div>
+              <div>
+                <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px]">XML Complexity</span>
+                <span class="font-medium text-gray-900">${data.metadata.tags} elements detected</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px]">Dates Logged</span>
+                <div class="space-y-0.5 mt-0.5 text-[11px]">
+                  ${buildDatesList(data.metadata.dates)}
+                </div>
+              </div>
+              <div>
+                <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px]">Places Logged</span>
+                <div class="space-y-0.5 mt-0.5 text-[11px]">
+                  ${buildGeosList(data.metadata.geolocations)}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Identified Features</span>
+              <div class="flex flex-wrap gap-1">
+                ${data.metadata.features.length > 0 ? data.metadata.features.map(f => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded font-mono text-[9px] font-medium">${f}</span>`).join('') : '<span class="text-gray-400 italic">None detected</span>'}
+              </div>
+            </div>
+
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Assigned Topics (Taxonomy Matching)</span>
+              <div class="space-y-1.5">
+                ${data.metadata.topics.length > 0 ? data.metadata.topics.map(t => {
+                  const topicName = TOPICS_MAP.get(t.id) || t.id;
+                  return `
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-gray-700 shrink-0 text-[10px] w-48 truncate" title="${topicName} (${t.id})">${topicName}</span>
+                    <div class="flex-1 bg-gray-150 h-1.5 rounded-full overflow-hidden border border-gray-200">
+                      <div class="bg-indigo-600 h-full rounded-full" style="width: ${t.confidence * 100}%"></div>
+                    </div>
+                    <span class="text-gray-500 font-medium text-[9px] shrink-0 w-8 text-right">${(t.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                  `;
+                }).join('') : '<span class="text-gray-400 italic">No topics matched</span>'}
+              </div>
+            </div>
+          </div>
+        `;
+        detailsContainer.classList.remove('hidden');
+      } else if (res.status === 409) {
+        badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded';
+        badge.textContent = 'Duplicate';
+        badge.title = data.error || 'Already ingested';
+      } else {
+        badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded';
+        badge.textContent = 'Error';
+        badge.title = data.error || 'Ingestion failed';
+      }
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('File reading failed'));
+        reader.readAsText(file);
+      });
+    }
+
+    // --- DATASET CURATION / MANAGEMENT PANEL ---
+    let currentTab = 'upload';
+
+    // --- VIEW CONTROLS ---
+    function showUploadForm() {
+      const panelUpload = document.getElementById('panelUpload');
+      const panelManage = document.getElementById('panelManage');
+      const queueColumn = document.getElementById('queueColumn');
+      const mainCard = document.getElementById('mainCard');
+
+      panelUpload.classList.remove('hidden');
+      panelManage.classList.add('hidden');
+      
+      // Show queue column and make card split-layout
+      queueColumn.classList.remove('hidden');
+      mainCard.className = 'w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col md:flex-row gap-8';
+    }
+
+    function showCurationRegistry() {
+      const panelUpload = document.getElementById('panelUpload');
+      const panelManage = document.getElementById('panelManage');
+      const queueColumn = document.getElementById('queueColumn');
+      const mainCard = document.getElementById('mainCard');
+
+      panelUpload.classList.add('hidden');
+      panelManage.classList.remove('hidden');
+      
+      // Hide queue column and make card full-width layout
+      queueColumn.classList.add('hidden');
+      mainCard.className = 'w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col gap-8';
+      loadCurationData();
+    }
+
+    async function loadCurationData() {
+      const container = document.getElementById('manageContent');
+      container.innerHTML = `
+        <div class="text-gray-400 text-xs text-center py-16">
+          <svg class="animate-spin h-5 w-5 text-gray-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          Loading digital editions...
+        </div>
+      `;
+
+      try {
+        const res = await fetch('/api/manage');
+        if (!res.ok) throw new Error('Failed to load dataset details');
+        const data = await res.json();
+        renderCurationEditions(data.editions || []);
+      } catch (err) {
+        container.innerHTML = `
+          <div class="bg-rose-50 border border-rose-100 rounded-lg p-4 text-xs text-rose-800">
+            <strong>Error:</strong> ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    function renderCurationEditions(editions) {
+      const container = document.getElementById('manageContent');
+      if (editions.length === 0) {
+        container.innerHTML = `
+          <div class="text-gray-400 text-xs text-center py-16">
+            No editions found in the database.
+            <button onclick="showUploadForm()" class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg text-xs focus:outline-none transition-colors mx-auto flex items-center gap-1.5 shadow-sm">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+              Upload Documents
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="flex justify-between items-center mb-4">
+          <div class="text-gray-500 text-xs font-semibold uppercase tracking-wider">Digital Editions (${editions.length})</div>
+          <button onclick="showUploadForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg text-xs focus:outline-none transition-colors flex items-center gap-1.5 shadow-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Upload Documents
+          </button>
+        </div>
+        <div class="space-y-2">
+          ${editions.map(ed => {
+            const isExcluded = ed.is_excluded;
+            return `
+            <div class="bg-white border border-gray-250 rounded-lg p-3.5 flex flex-col gap-2 shadow-sm ${isExcluded ? 'opacity-70 bg-gray-50/50' : ''}">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h4 class="font-bold text-sm ${isExcluded ? 'text-gray-500 line-through' : 'text-gray-900'}">${ed.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</h4>
+                  <p class="text-[10px] text-gray-400 font-mono mt-0.5">${ed.name}</p>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="px-2 py-0.5 rounded text-[9px] border font-bold uppercase tracking-wider ${isExcluded ? 'text-gray-500 bg-gray-100 border-gray-200' : 'text-emerald-700 bg-emerald-50 border-emerald-100'}">
+                    ${isExcluded ? 'Excluded' : 'Active'}
+                  </span>
+                  <span class="bg-gray-100 text-gray-700 font-semibold px-2 py-0.5 rounded text-[10px] border border-gray-200">
+                    ${ed.number_documents} docs
+                  </span>
+                </div>
+              </div>
+              
+              ${ed.description ? `<p class="text-xs text-gray-600 line-clamp-2 leading-relaxed">${ed.description}</p>` : ''}
+              
+              <div id="edition-stats-${ed.id}" class="hidden mt-2 pt-2 border-t border-gray-150 text-xs text-gray-700 space-y-2"></div>
+
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+                <button onclick="loadEditionDocuments(${ed.id}, '${ed.name}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none transition-colors border border-indigo-100 flex items-center gap-1">
+                  Manage Documents
+                </button>
+                <button onclick="toggleEditionStats(${ed.id})" class="bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none transition-colors border border-gray-200 flex items-center gap-1">
+                  Statistics
+                </button>
+                
+                ${isExcluded ? `
+                  <button onclick="toggleEditionExclusion(${ed.id}, false, '${ed.name}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none transition-colors border border-indigo-100 ml-auto flex items-center gap-1">
+                    Include Edition
+                  </button>
+                ` : `
+                  <button onclick="toggleEditionExclusion(${ed.id}, true, '${ed.name}')" class="bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-200 text-gray-500 hover:text-rose-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none transition-colors ml-auto flex items-center gap-1">
+                    Exclude Edition
+                  </button>
+                `}
+              </div>
+            </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    async function loadEditionDocuments(editionId, editionName) {
+      const container = document.getElementById('manageContent');
+      container.innerHTML = `
+        <div class="text-gray-400 text-xs text-center py-16">
+          <svg class="animate-spin h-5 w-5 text-gray-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          Loading documents for ${editionName}...
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/manage?editionId=${editionId}`);
+        if (!res.ok) throw new Error('Failed to load documents');
+        const data = await res.json();
+        renderCurationDocuments(data.documents || [], editionId, editionName);
+      } catch (err) {
+        container.innerHTML = `
+          <div class="bg-rose-50 border border-rose-100 rounded-lg p-4 text-xs text-rose-800">
+            <strong>Error:</strong> ${err.message}
+            <button onclick="loadCurationData()" class="block mt-2 text-indigo-600 hover:underline font-semibold">Back to editions</button>
+          </div>
+        `;
+      }
+    }
+
+    function renderCurationDocuments(documents, editionId, editionName) {
+      const container = document.getElementById('manageContent');
+      
+      const drawList = (docs) => {
+        if (docs.length === 0) {
+          return `<div class="text-gray-400 text-xs text-center py-8">No documents found.</div>`;
+        }
+        return `
+          <div class="space-y-1.5 max-h-[350px] overflow-y-auto pr-1">
+            ${docs.map(doc => {
+              const isExcluded = doc.is_excluded;
+              return `
+              <div class="bg-white border border-gray-150 rounded-lg p-2.5 shadow-sm text-xs flex flex-col gap-1.5 ${isExcluded ? 'opacity-70 bg-gray-50/50' : ''}">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="truncate pr-4 flex flex-col gap-0.5">
+                    <span class="${isExcluded ? 'text-gray-400 line-through' : 'font-semibold text-gray-800'} block truncate" title="${doc.name}">${doc.name}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[9px] text-gray-400 font-mono">ID: ${doc.id}</span>
+                      <button onclick="toggleDocumentCurationDetails(${doc.id})" class="text-indigo-600 hover:text-indigo-800 text-[10px] font-semibold underline focus:outline-none">
+                        Details
+                      </button>
+                    </div>
+                  </div>
+                  
+                  ${isExcluded ? `
+                    <button onclick="toggleDocumentExclusion(${doc.id}, false, ${editionId}, '${editionName}')" class="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50/50 px-2 py-1 rounded font-semibold text-[10px] transition-colors shrink-0" title="Include document">
+                      Include
+                    </button>
+                  ` : `
+                    <button onclick="toggleDocumentExclusion(${doc.id}, true, ${editionId}, '${editionName}')" class="text-gray-500 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded font-semibold text-[10px] transition-colors shrink-0" title="Exclude document">
+                      Exclude
+                    </button>
+                  `}
+                </div>
+
+                <div id="doc-details-${doc.id}" class="hidden mt-2 pt-2 border-t border-gray-100 space-y-2.5"></div>
+              </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      };
+
+      container.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+          <button onclick="loadCurationData()" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 focus:outline-none">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            Editions
+          </button>
+          <span class="text-gray-300">/</span>
+          <span class="text-gray-700 text-xs font-bold truncate max-w-[200px]" title="${editionName}">${editionName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+        </div>
+
+        <input type="text" id="docSearch" placeholder="Search documents by name..." class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 mb-3" />
+
+        <div id="docListContainer">
+          ${drawList(documents)}
+        </div>
+      `;
+
+      // Set up simple live-search listener
+      const searchInput = document.getElementById('docSearch');
+      const listContainer = document.getElementById('docListContainer');
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const filtered = documents.filter(d => d.name.toLowerCase().includes(query));
+        listContainer.innerHTML = drawList(filtered);
+      });
+    }
+
+    async function toggleEditionExclusion(id, isExcluded, name) {
+      const dispName = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const confirmMsg = isExcluded
+        ? `Are you sure you want to exclude the digital edition "${dispName}"?\nIts documents will be hidden from dashboard statistics, but remain in the database.`
+        : `Are you sure you want to re-include the digital edition "${dispName}"?\nIts documents will be restored to dashboard statistics immediately.`;
+      
+      const confirm = window.confirm(confirmMsg);
+      if (!confirm) return;
+
+      try {
+        const res = await fetch('/api/manage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'toggle_edition_exclusion', id, isExcluded })
+        });
+        if (!res.ok) throw new Error('Request failed');
+        loadCurationData();
+      } catch (err) {
+        alert(`Failed to toggle edition exclusion: ${err.message}`);
+      }
+    }
+
+    async function toggleDocumentExclusion(id, isExcluded, editionId, editionName) {
+      try {
+        const res = await fetch('/api/manage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'toggle_document_exclusion', id, isExcluded })
+        });
+        if (!res.ok) throw new Error('Request failed');
+        loadEditionDocuments(editionId, editionName);
+      } catch (err) {
+        alert(`Failed to toggle document exclusion: ${err.message}`);
+      }
+    }
+
+    async function toggleEditionStats(editionId) {
+      const el = document.getElementById(`edition-stats-${editionId}`);
+      if (!el) return;
+
+      el.classList.toggle('hidden');
+      if (el.classList.contains('hidden')) return;
+
+      // Only fetch if empty
+      if (el.innerHTML.trim() !== '') return;
+
+      el.innerHTML = `
+        <div class="text-gray-400 text-[11px] py-4 text-center">
+          <svg class="animate-spin h-4 w-4 text-gray-400 mx-auto mb-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          Loading collection statistics...
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/manage?editionDetailsId=${editionId}`);
+        if (!res.ok) throw new Error('Failed to load stats');
+        const data = await res.json();
+
+        const formatPercentList = (items) => {
+          if (!items || items.length === 0) return '<span class="text-gray-400 italic text-[11px]">None found</span>';
+          return items.map(i => `
+            <div class="flex items-center justify-between text-[11px] py-0.5 border-b border-gray-50 last:border-0">
+              <span class="font-medium text-gray-700">${i.lang ? i.lang.toUpperCase() : i.key || i.name}</span>
+              <span class="text-gray-400 font-mono">${i.count} docs</span>
+            </div>
+          `).join('');
+        };
+
+        const yearsText = (data.years && data.years.min_year) 
+          ? `<span class="font-semibold text-gray-800">${data.years.min_year} &mdash; ${data.years.max_year}</span>`
+          : '<span class="text-gray-400 italic">No dates cataloged</span>';
+
+        el.innerHTML = `
+          <div class="grid grid-cols-2 gap-3 mt-1.5 p-3 bg-gray-50 rounded-lg border border-gray-150">
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Languages Present</span>
+              <div class="space-y-0.5 max-h-24 overflow-y-auto">
+                ${formatPercentList(data.languages)}
+              </div>
+            </div>
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Temporal Coverage</span>
+              <div class="text-[11px] pt-1">
+                ${yearsText}
+              </div>
+              
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mt-3 mb-1">Collection Features</span>
+              <div class="space-y-0.5 max-h-20 overflow-y-auto">
+                ${formatPercentList(data.features.filter(f => f.count > 0))}
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2 bg-gray-50 rounded-lg border border-gray-150 p-3">
+            <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-1">Top Matching Topics</span>
+            <div class="space-y-1.5">
+              ${data.topics.length > 0 ? data.topics.map(t => {
+                const topicName = TOPICS_MAP.get(t.id) || t.id;
+                return `
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-gray-700 shrink-0 text-[10px] w-48 truncate" title="${topicName} (${t.id})">${topicName}</span>
+                  <span class="text-gray-400 font-mono text-[9px] ml-auto shrink-0">${t.count} docs</span>
+                </div>
+                `;
+              }).join('') : '<span class="text-gray-400 italic text-[11px]">No topics matched</span>'}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        el.innerHTML = `<span class="text-rose-700 italic text-[11px]">Error loading stats: ${err.message}</span>`;
+      }
+    }
+
+    async function toggleDocumentCurationDetails(docId) {
+      const el = document.getElementById(`doc-details-${docId}`);
+      if (!el) return;
+
+      el.classList.toggle('hidden');
+      if (el.classList.contains('hidden')) return;
+
+      // Only fetch if empty
+      if (el.innerHTML.trim() !== '') return;
+
+      el.innerHTML = `
+        <div class="text-gray-400 text-[10px] py-4 text-center">
+          <svg class="animate-spin h-3.5 w-3.5 text-gray-400 mx-auto mb-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          Loading metadata details...
+        </div>
+      `;
+
+      try {
+        const res = await fetch(`/api/manage?documentId=${docId}`);
+        if (!res.ok) throw new Error('Failed to load document details');
+        const data = await res.json();
+
+        // Populate metadata card using same formats as success upload lists!
+        el.innerHTML = `
+          <div class="grid grid-cols-2 gap-2 mt-1 bg-gray-50 rounded p-2.5 border border-gray-150">
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px]">Language Detection</span>
+              <span class="font-medium text-gray-800 text-[11px]">${data.metadata.language.toUpperCase()} ${data.metadata.languageInferred ? '<span class="text-amber-600 text-[9px]">(Inferred)</span>' : '<span class="text-emerald-600 text-[9px]">(Confirmed)</span>'}</span>
+            </div>
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px]">XML Complexity</span>
+              <span class="font-medium text-gray-800 text-[11px]">${data.metadata.tags} elements</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 bg-gray-50 rounded p-2.5 border border-gray-150">
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px]">Dates Logged</span>
+              <div class="space-y-0.5 mt-0.5 text-[10px]">
+                ${buildDatesList(data.metadata.dates)}
+              </div>
+            </div>
+            <div>
+              <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px]">Places Logged</span>
+              <div class="space-y-0.5 mt-0.5 text-[10px]">
+                ${buildGeosList(data.metadata.geolocations)}
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 rounded p-2.5 border border-gray-150">
+            <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px] mb-1">Identified Features</span>
+            <div class="flex flex-wrap gap-1">
+              ${data.metadata.features.length > 0 ? data.metadata.features.map(f => `<span class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded font-mono text-[8px] font-medium">${f}</span>`).join('') : '<span class="text-gray-400 italic text-[9px]">None detected</span>'}
+            </div>
+          </div>
+
+          <div class="bg-gray-50 rounded p-2.5 border border-gray-150">
+            <span class="block font-bold text-gray-400 uppercase tracking-wider text-[8px] mb-1">Assigned Topics</span>
+            <div class="space-y-1.5">
+              ${data.metadata.topics.length > 0 ? data.metadata.topics.map(t => {
+                const topicName = TOPICS_MAP.get(t.id) || t.id;
+                return `
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-gray-700 shrink-0 text-[10px] w-48 truncate" title="${topicName} (${t.id})">${topicName}</span>
+                  <div class="flex-1 bg-gray-200 h-1 rounded-full overflow-hidden">
+                    <div class="bg-indigo-600 h-full rounded-full" style="width: ${t.confidence * 100}%"></div>
+                  </div>
+                  <span class="text-gray-500 font-medium text-[9px] shrink-0 w-8 text-right">${(t.confidence * 100).toFixed(0)}%</span>
+                </div>
+                `;
+              }).join('') : '<span class="text-gray-400 italic text-[9px]">No topics matched</span>'}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        el.innerHTML = `<span class="text-rose-700 italic text-[10px]">Error loading details: ${err.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>
