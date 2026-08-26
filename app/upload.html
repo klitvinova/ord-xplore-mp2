@@ -366,8 +366,17 @@
                     ${analyzeData.extractableData.map(d => `<li>${d}</li>`).join('')}
                   </ul>
                 </div>
-
-
+                ${analyzeData.suggestions && analyzeData.suggestions.length > 0 ? `
+                <div>
+                  <span class="block font-bold text-gray-400 uppercase tracking-wider text-[9px] mb-0.5">
+                    ${analyzeData.aiGenerated ? 'AI-Generated Structuring Suggestions' : 'Alternative Suggestions'}
+                  </span>
+                  ${analyzeData.aiGenerated ? '<p class="text-[9px] text-gray-400 italic mb-1.5">Contextual recommendations generated dynamically from your TEI XML structure</p>' : ''}
+                  <ul class="list-decimal pl-4 space-y-1 text-gray-700 text-[11px] font-medium">
+                    ${analyzeData.suggestions.map(s => `<li>${s}</li>`).join('')}
+                  </ul>
+                </div>
+                ` : ''}
 
                 <div class="pt-2 flex justify-end">
                   <button onclick="forceIngest(${i})" class="bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-semibold px-2.5 py-1 rounded text-[10px] focus:outline-none flex items-center gap-1">

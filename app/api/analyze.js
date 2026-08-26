@@ -168,7 +168,7 @@ Analyze the structure and return JSON strictly matching this schema:
 
       const result = JSON.parse(response.choices[0].message.content);
       if (result && typeof result.suitable === 'boolean') {
-        return res.status(200).json(result);
+        return res.status(200).json({ ...result, aiGenerated: true });
       }
     } catch (e) {
       console.error('GPT pre-analysis failed, falling back to rules-based analyzer:', e);
@@ -181,6 +181,7 @@ Analyze the structure and return JSON strictly matching this schema:
     detectedType,
     reason,
     extractableData,
-    suggestions
+    suggestions,
+    aiGenerated: false
   });
 }
