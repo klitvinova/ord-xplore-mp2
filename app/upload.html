@@ -41,7 +41,7 @@
     <div id="mainCard" class="w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col gap-8">
       
       <!-- Left Column: Forms and Lists -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="w-full md:w-[400px] shrink-0 flex flex-col min-w-0">
         
         <!-- Ingestion Form Panel (hidden by default) -->
         <div id="panelUpload" class="hidden space-y-6">
@@ -99,11 +99,15 @@
         </div>
       </div>
 
-      <!-- Right Column: Live Logging Status & Transparency -->
-      <div id="queueColumn" class="w-full md:w-96 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-6">
+      <div id="queueColumn" class="flex-1 flex flex-col border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-6 min-w-0">
         <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4 flex justify-between items-center">
-          <span>Processing Queue</span>
-          <span id="queueCount" class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">0</span>
+          <span class="flex items-center gap-2">
+            <span>Processing Queue</span>
+            <span id="queueCount" class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">0</span>
+          </span>
+          <button id="clearQueueBtn" onclick="clearQueue()" class="text-[10px] text-gray-400 hover:text-red-500 font-semibold focus:outline-none hidden">
+            Clear Queue
+          </button>
         </h3>
         <div id="logQueue" class="flex-1 overflow-y-auto max-h-[400px] md:max-h-none space-y-3 pr-1 text-sm text-gray-700">
           <div class="text-gray-400 text-xs text-center py-16">
@@ -219,10 +223,22 @@
         `;
         container.appendChild(item);
       });
+
+      const clearBtn = document.getElementById('clearQueueBtn');
+      if (filesList.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
     }
 
     function removeQueueItem(index) {
       filesList.splice(index, 1);
+      renderQueue();
+    }
+
+    function clearQueue() {
+      filesList = [];
       renderQueue();
     }
 
@@ -319,6 +335,12 @@
         if (!itemEl) continue;
 
         const badge = itemEl.querySelector('.status-badge');
+        
+        // Skip files that have already been processed successfully or marked unsuitable
+        if (badge.textContent === 'Success' || badge.textContent === 'Unsuitable') {
+          continue;
+        }
+
         badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded animate-pulse';
         badge.textContent = 'Analyzing';
 
