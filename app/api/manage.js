@@ -27,6 +27,14 @@ export default async function handler(req, res) {
 
   const client = await pool.connect();
 
+  // Self-healing database migration for soft-exclusion columns
+  try {
+    await client.query('ALTER TABLE editions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+    await client.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+  } catch (e) {
+    console.warn('Auto-migration database check warning in manage.js:', e.message);
+  }
+
   try {
     // --- GET METHOD: Retrieve list of editions or documents ---
     if (req.method === 'GET') {

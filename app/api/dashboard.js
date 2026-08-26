@@ -5,6 +5,14 @@ export default async function handler(req, res) {
 
   const dbPool = getPool();
 
+  // Self-healing database migration for soft-exclusion columns
+  try {
+    await dbPool.query('ALTER TABLE editions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+    await dbPool.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+  } catch (e) {
+    console.warn('Auto-migration database check warning:', e.message);
+  }
+
   try {
     if (req.method === 'GET') {
       // Initial Load metadata dictionaries
