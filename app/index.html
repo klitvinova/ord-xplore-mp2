@@ -1359,7 +1359,9 @@
         // --- Map Logic ---
         function initMap() {
             map = L.map('map').setView([48, 10], 4);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+            L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_2aq6_1_1525e2004869d5099678ffed', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            }).addTo(map);
             cityClusters = L.markerClusterGroup();
             map.addLayer(cityClusters);
 
