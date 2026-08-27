@@ -41,7 +41,7 @@
     <div id="mainCard" class="w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col gap-8">
       
       <!-- Left Column: Forms and Lists -->
-      <div class="w-full md:w-[400px] shrink-0 flex flex-col min-w-0">
+      <div id="leftColumn" class="flex-1 flex flex-col min-w-0">
         
         <!-- Ingestion Form Panel (hidden by default) -->
         <div id="panelUpload" class="hidden space-y-6">
@@ -569,12 +569,12 @@
     // --- DATASET CURATION / MANAGEMENT PANEL ---
     let currentTab = 'upload';
 
-    // --- VIEW CONTROLS ---
     function showUploadForm() {
       const panelUpload = document.getElementById('panelUpload');
       const panelManage = document.getElementById('panelManage');
       const queueColumn = document.getElementById('queueColumn');
       const mainCard = document.getElementById('mainCard');
+      const leftColumn = document.getElementById('leftColumn');
 
       panelUpload.classList.remove('hidden');
       panelManage.classList.add('hidden');
@@ -582,6 +582,7 @@
       // Show queue column and make card split-layout
       queueColumn.classList.remove('hidden');
       mainCard.className = 'w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col md:flex-row gap-8';
+      leftColumn.className = 'w-full md:w-[400px] shrink-0 flex flex-col min-w-0';
     }
 
     function showCurationRegistry() {
@@ -589,6 +590,7 @@
       const panelManage = document.getElementById('panelManage');
       const queueColumn = document.getElementById('queueColumn');
       const mainCard = document.getElementById('mainCard');
+      const leftColumn = document.getElementById('leftColumn');
 
       panelUpload.classList.add('hidden');
       panelManage.classList.remove('hidden');
@@ -596,6 +598,7 @@
       // Hide queue column and make card full-width layout
       queueColumn.classList.add('hidden');
       mainCard.className = 'w-full dashboard-card rounded-xl p-6 md:p-8 flex flex-col gap-8';
+      leftColumn.className = 'flex-1 flex flex-col min-w-0';
       loadCurationData();
     }
 
