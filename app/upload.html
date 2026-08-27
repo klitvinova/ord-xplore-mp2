@@ -132,6 +132,15 @@
     let isCustomEditionMode = false;
     const TOPICS_MAP = new Map();
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+    }
+
     // Load existing editions list on load
     window.addEventListener('DOMContentLoaded', async () => {
       try {
@@ -414,6 +423,24 @@
           badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded';
           badge.textContent = 'Failed';
           badge.title = err.message || 'Unknown error occurred';
+          
+          const detailsContainer = itemEl.querySelector('.details-section');
+          if (detailsContainer) {
+            detailsContainer.innerHTML = `
+              <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-rose-700 space-y-2.5">
+                <div class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-900 space-y-1">
+                  <span class="block font-bold text-rose-800 uppercase tracking-wider text-[9px]">Ingestion Error</span>
+                  <p class="font-normal text-[11px] leading-relaxed text-rose-800">${escapeHtml(err.message || 'An error occurred during upload.')}</p>
+                  ${file.size > 4.5 * 1024 * 1024 ? `
+                    <p class="text-[10px] text-rose-700 font-semibold mt-1.5">
+                      ⚠️ Note: This file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Vercel Serverless Functions limit upload payloads to 4.5 MB. Please split the XML file into smaller chunks to upload.
+                    </p>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+            detailsContainer.classList.remove('hidden');
+          }
         }
       }
 
@@ -445,6 +472,24 @@
         badge.className = 'status-badge text-[9px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded';
         badge.textContent = 'Failed';
         badge.title = err.message || 'Unknown error occurred';
+        
+        const detailsContainer = itemEl.querySelector('.details-section');
+        if (detailsContainer) {
+          detailsContainer.innerHTML = `
+            <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-rose-700 space-y-2.5">
+              <div class="bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-900 space-y-1">
+                <span class="block font-bold text-rose-800 uppercase tracking-wider text-[9px]">Ingestion Error</span>
+                <p class="font-normal text-[11px] leading-relaxed text-rose-800">${escapeHtml(err.message || 'An error occurred during force-upload.')}</p>
+                ${file.size > 4.5 * 1024 * 1024 ? `
+                  <p class="text-[10px] text-rose-700 font-semibold mt-1.5">
+                    ⚠️ Note: This file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Vercel Serverless Functions limit upload payloads to 4.5 MB. Please split the XML file into smaller chunks to upload.
+                  </p>
+                ` : ''}
+              </div>
+            </div>
+          `;
+          detailsContainer.classList.remove('hidden');
+        }
       }
     }
 
