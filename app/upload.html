@@ -602,6 +602,17 @@
       loadCurationData();
     }
 
+    function showUploadFormForEdition(editionName) {
+      showUploadForm();
+      if (isCustomEditionMode) {
+        toggleCustomEditionMode();
+      }
+      const selectEl = document.getElementById('editionSelect');
+      if (selectEl) {
+        selectEl.value = editionName;
+      }
+    }
+
     async function loadCurationData() {
       const container = document.getElementById('manageContent');
       container.innerHTML = `
@@ -765,13 +776,19 @@
       };
 
       container.innerHTML = `
-        <div class="flex items-center gap-2 mb-3">
-          <button onclick="loadCurationData()" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 focus:outline-none">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            Editions
+        <div class="flex justify-between items-center w-full mb-4 border-b border-gray-100 pb-2">
+          <div class="flex items-center gap-2">
+            <button onclick="loadCurationData()" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 focus:outline-none">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+              Editions
+            </button>
+            <span class="text-gray-300">/</span>
+            <span class="text-gray-700 text-xs font-bold truncate max-w-[200px]" title="${editionName}">${editionName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+          </div>
+          <button onclick="showUploadFormForEdition('${editionName}')" class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold py-1.5 px-3 rounded-lg shadow-sm text-xs focus:outline-none transition-all flex items-center gap-1.5 active:scale-[0.99]">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Upload Documents
           </button>
-          <span class="text-gray-300">/</span>
-          <span class="text-gray-700 text-xs font-bold truncate max-w-[200px]" title="${editionName}">${editionName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
         </div>
 
         <input type="text" id="docSearch" placeholder="Search documents by name..." class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 mb-3" />
