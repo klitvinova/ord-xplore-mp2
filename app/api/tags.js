@@ -29,11 +29,14 @@ export default async function handler(req, res) {
     params.push(limit);
 
     const { rows } = await getPool().query(
-      `SELECT t.name, COUNT(dt.document_id)::int AS doc_count
+      `SELECT t.name, COUNT(dt.document_id)::int AS doc_count,
+              COALESCE(def.category, 'General Element') AS category,
+              COALESCE(def.description, 'Standard TEI XML document element.') AS description
          FROM tags t
          LEFT JOIN document_tags dt ON dt.tag_id = t.id
+         LEFT JOIN tei_tag_definitions def ON def.name = t.name
          ${where}
-        GROUP BY t.name
+        GROUP BY t.name, def.category, def.description
         ORDER BY doc_count DESC, t.name ASC
         LIMIT $${params.length};`,
       params

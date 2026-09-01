@@ -277,7 +277,10 @@
                 <!-- Timeline -->
                 <div class="flex-1 p-4 border-r border-gray-200 flex flex-col min-h-0">
                     <div class="flex items-center justify-between mb-2 shrink-0">
-                        <h3 class="text-sm font-semibold text-gray-700 uppercase">TIMELINE</h3>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-semibold text-gray-700 uppercase">TIMELINE</h3>
+                            <div id="activeYearBadge" class="hidden"></div>
+                        </div>
                         <div class="flex items-center gap-4">
                             <!-- Segmented Toggle -->
                             <div class="flex bg-gray-100 p-0.5 rounded-md text-[10px] font-medium items-center">
@@ -490,19 +493,22 @@
                 }
                 return res.json();
             }),
-            d3.json(`topics_hierarchy.json?v=${t}`)
+            d3.json(`topics_hierarchy.json?v=${t}`).catch(err => {
+                console.warn("topics_hierarchy.json fallback to dbMeta:", err);
+                return null;
+            })
         ]).then(([dbMeta, topicRes]) => {
-            TOPIC_HIERARCHY = topicRes;
+            TOPIC_HIERARCHY = (Array.isArray(topicRes) && topicRes.length > 0) ? topicRes : (dbMeta.topics || []);
             ALL_FEATURES = dbMeta.features || [];
 
             // Set up editions metadata
             EDITION_METADATA = {};
-            dbMeta.editions.forEach(ed => {
+            (dbMeta.editions || []).forEach(ed => {
                 EDITION_METADATA[ed.name] = ed;
             });
 
             initMap();
-            renderTopicHierarchy(topicRes);
+            renderTopicHierarchy(TOPIC_HIERARCHY);
             updateDashboard();
         }).catch(err => {
             console.error("Error loading data:", err);
@@ -528,6 +534,12 @@
                 btnDoc.className = "px-3 py-1.5 rounded transition-all text-sm " + inactiveClass;
                 document.getElementById('legend-label').innerText = "Edition Count";
             }
+            updateDashboard();
+        }
+
+        function clearYearFilter(e) {
+            if (e) e.stopPropagation();
+            FILTERS.yearRange = null;
             updateDashboard();
         }
 
@@ -637,15 +649,21 @@
             map[key].add(val);
         }
 
+        let EXTRACTED_FACETS = [];
+
         function resetFilters() {
             document.getElementById('searchInput').value = "";
             document.getElementById('searchStatus').classList.add('hidden');
+            document.getElementById('searchMessage').classList.add('hidden');
+            EXTRACTED_FACETS = [];
             FILTERS = {
                 lang: null,
                 country: null,
                 city: null,
                 yearRange: null,
                 feature: null,
+                properties: [],
+                tagValues: [],
                 topicId: null,
                 dateSource: 'contextual',
                 geoSource: 'contextual'
@@ -709,7 +727,7 @@
             });
         }
 
-        // --- SEARCH INTEGRATION ---
+        // --- SEARCH INTEGRATION (MCF / CaISI FOUNDATION) ---
         let SEARCH_APPLIED = false;
 
         function clearSearch() {
@@ -718,8 +736,6 @@
             document.getElementById('clearSearch').classList.add('hidden');
             document.getElementById('searchMessage').classList.add('hidden');
             document.getElementById('searchStatus').classList.add('hidden');
-            // /api/interpret only ever sets the ordinary facet filters, so
-            // clearing the query means clearing whatever those were set to.
             if (SEARCH_APPLIED) {
                 SEARCH_APPLIED = false;
                 resetFilters();
@@ -730,13 +746,15 @@
         async function handleSearch() {
             const query = document.getElementById('searchInput').value.trim();
             const statusEl = document.getElementById('searchStatus');
+            const messageEl = document.getElementById('searchMessage');
 
             if (!query) {
                 return;
             }
 
-            statusEl.textContent = "Searching...";
+            statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><svg class="animate-spin h-3.5 w-3.5 text-blue-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing query with CaISI Intent Engine...</span>`;
             statusEl.classList.remove('hidden');
+            messageEl.classList.add('hidden');
 
             try {
                 const res = await fetch('/api/interpret', {
@@ -747,93 +765,319 @@
 
                 if (!res.ok) throw new Error("API Error");
 
-                const data = await res.json();
-                console.log("Search response:", data.data);
+                const result = await res.json();
+                const data = result.data || {};
+                console.log("MCF / CaISI Search response:", data);
 
-                applyBackendFacets(data.data.facets);
+                const scope = data.scope || {};
+                const intents = data.intents || [];
+                const facets = data.facets || {};
+                const msg = data.message || scope.message || "Query processed.";
 
-                // Show LLM message where "Done." used to appear
-                const msg = data.data && data.data.message;
-                statusEl.textContent = msg || "Done.";
-                statusEl.classList.remove('hidden');
-
-                // Only auto-hide if it's just "Done.". Keep LLM messages permanent until cleared.
-                if (!msg) {
-                    setTimeout(() => statusEl.classList.add('hidden'), 2000);
+                // Handle Scope Decisions
+                if (scope.decision === 'unsupported') {
+                    statusEl.innerHTML = `
+                        <div class="space-y-1 py-0.5">
+                            <div class="font-semibold text-amber-700 flex items-center gap-1">
+                                <span>⚠️ Query Outside Exploration Scope</span>
+                            </div>
+                            <div class="text-gray-700">${escapeHtml(scope.reason || 'This query cannot be answered via metadata filters.')}</div>
+                            <div class="text-xs text-gray-500 italic mt-0.5">${escapeHtml(scope.message || 'Tip: Try searching for digital edition characteristics, dates, places, or languages.')}</div>
+                        </div>
+                    `;
+                    statusEl.classList.remove('hidden');
+                    return;
                 }
 
+                if (scope.decision === 'unclear') {
+                    statusEl.innerHTML = `
+                        <div class="space-y-1 py-0.5">
+                            <div class="font-semibold text-blue-700 flex items-center gap-1">
+                                <span>ℹ️ Please clarify query</span>
+                            </div>
+                            <div class="text-gray-700">${escapeHtml(scope.reason || 'The query is too broad or ambiguous.')}</div>
+                            <div class="text-xs text-gray-500 italic mt-0.5">${escapeHtml(scope.message || 'Tip: Add specific attributes like time ranges, languages, or features.')}</div>
+                        </div>
+                    `;
+                    statusEl.classList.remove('hidden');
+                    return;
+                }
+
+                // Supported query: Apply facets and display decomposed intents
+                CURRENT_SEARCH_INTENTS = (intents || []).map(it => ({ ...it, active: true }));
+                applyBackendFacets(facets, intents);
+
+                statusEl.innerHTML = `
+                    <div class="space-y-1 py-0.5">
+                        <div class="font-semibold text-emerald-700 flex items-center justify-between text-xs">
+                            <span class="flex items-center gap-1">✨ CaISI Intent Match</span>
+                            <span class="text-[10px] text-gray-500 font-normal italic">(click any pill to toggle on/off)</span>
+                        </div>
+                        <div class="text-gray-800">${escapeHtml(msg)}</div>
+                        <div id="searchIntentPills" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+                    </div>
+                `;
+                renderInteractiveIntentPills();
+                statusEl.classList.remove('hidden');
+
             } catch (err) {
-                console.error(err);
-                statusEl.textContent = "Error searching. See console.";
+                console.error("Search error:", err);
+                statusEl.innerHTML = `<span class="text-rose-600 font-medium">Error searching. Check console or backend logs.</span>`;
                 statusEl.classList.remove('hidden');
             }
         }
 
-        function applyBackendFacets(facets) {
+        let CURRENT_SEARCH_INTENTS = [];
+
+        // Global mapping from API facet names to dashboard feature keys
+        const BINARY_FACET_MAPPING = {
+            'medieval_manuscript': 'is_medieval_manuscript',
+            'is_medieval_manuscript': 'is_medieval_manuscript',
+            'manuscript': 'is_manuscript',
+            'is_manuscript': 'is_manuscript',
+            'letter': 'is_letter',
+            'is_letter': 'is_letter',
+            'political_letter': 'is_political_letter',
+            'is_political_letter': 'is_political_letter',
+            'verse': 'contains_verse',
+            'contains_verse': 'contains_verse',
+            'direct_speech': 'contains_direct_speech',
+            'contains_direct_speech': 'contains_direct_speech',
+            'linguistic_annotation': 'contains_linguistic_annotation',
+            'contains_linguistic_annotation': 'contains_linguistic_annotation',
+            'theatre': 'contains_theatre',
+            'contains_theatre': 'contains_theatre',
+            'east_asian_scripts': 'contains_east_asian_scripts',
+            'contains_east_asian_scripts': 'contains_east_asian_scripts',
+            'japanese_scripts': 'contains_japanese_scripts',
+            'contains_japanese_scripts': 'contains_japanese_scripts',
+            'political_protocols': 'contains_political_protocols',
+            'contains_political_protocols': 'contains_political_protocols',
+            'dictionary': 'contains_dictionary',
+            'contains_dictionary': 'contains_dictionary',
+            'inscriptions': 'contains_inscriptions',
+            'contains_inscriptions': 'contains_inscriptions',
+            'law_texts': 'contains_law_texts',
+            'contains_law_texts': 'contains_law_texts',
+            'newspaper_articles': 'contains_newspaper_articles',
+            'contains_newspaper_articles': 'contains_newspaper_articles',
+            'diary': 'contains_diary',
+            'contains_diary': 'contains_diary',
+            'is_historic': 'is_historic',
+            'historic': 'is_historic',
+            'flags_signed': 'flags_signed',
+            'flags_stamp': 'flags_stamp'
+        };
+
+        function renderInteractiveIntentPills() {
+            const container = document.getElementById('searchIntentPills');
+            if (!container) return;
+            if (!CURRENT_SEARCH_INTENTS || CURRENT_SEARCH_INTENTS.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = CURRENT_SEARCH_INTENTS.map((it, idx) => {
+                const active = it.active !== false;
+
+                let styleClass = "";
+                let statusDot = "";
+                if (active) {
+                    // Orange / Amber when filter is ACTIVE (matches active facets & tiles)
+                    styleClass = "bg-amber-100 text-amber-950 border-amber-300 font-semibold shadow-xs hover:bg-amber-200";
+                    statusDot = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>`;
+                } else {
+                    // Blue / Sky when INACTIVE (matches default/unselected state)
+                    styleClass = "bg-sky-50 text-sky-700 border-sky-200 line-through opacity-75 hover:bg-sky-100";
+                    statusDot = `<span class="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5"></span>`;
+                }
+
+                const titleAttr = it.description 
+                    ? `title="${escapeHtml(it.description)} (${active ? 'Active - Click to turn OFF' : 'Inactive - Click to turn ON'})"` 
+                    : `title="${active ? 'Filter is ACTIVE - Click to turn OFF' : 'Filter is INACTIVE - Click to turn ON'}"`;
+
+                return `<button type="button" onclick="toggleIntentPill(${idx})" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${styleClass} border cursor-pointer transition-all select-none" ${titleAttr}>
+                    ${statusDot}
+                    <span>${escapeHtml(it.statement || it.facet || '')}</span>
+                </button>`;
+            }).join('');
+        }
+
+        function toggleIntentPill(idx) {
+            if (!CURRENT_SEARCH_INTENTS[idx]) return;
+            CURRENT_SEARCH_INTENTS[idx].active = !CURRENT_SEARCH_INTENTS[idx].active;
+            reapplyActiveIntents();
+            renderInteractiveIntentPills();
+        }
+
+        function reapplyActiveIntents() {
+            // Reset filters
+            FILTERS.country = null;
+            FILTERS.city = null;
+            FILTERS.lang = null;
+            FILTERS.yearRange = null;
+            FILTERS.feature = null;
+            FILTERS.topicId = null;
+            FILTERS.properties = [];
+            FILTERS.tagValues = [];
+
+            CURRENT_SEARCH_INTENTS.forEach(it => {
+                if (it.active === false) return; // skipped!
+                
+                // 1. Time
+                if (it.facet === 'time' && it.filter?.values) {
+                    const yrs = it.filter.values.map(Number).filter(n => !isNaN(n));
+                    if (yrs.length === 1) FILTERS.yearRange = [yrs[0], yrs[0]];
+                    else if (yrs.length > 1) FILTERS.yearRange = [Math.min(...yrs), Math.max(...yrs)];
+                }
+                // 2. Geography
+                else if (it.facet === 'geography' && it.filter?.values) {
+                    FILTERS.country = it.filter.values[0];
+                }
+                // 3. Language
+                else if (it.facet === 'language' && it.filter?.values) {
+                    FILTERS.lang = it.filter.values[0];
+                }
+                // 4. TEI Tag or Extracted Facet
+                else if (it.facet?.startsWith('tag_')) {
+                    const tagName = it.facet.replace('tag_', '');
+                    FILTERS.tagValues = FILTERS.tagValues || [];
+                    FILTERS.tagValues.push({ tag: tagName });
+                }
+                // 5. PersName / Person / Author
+                else if (it.facet === 'persName' || it.facet?.startsWith('persName') || it.statement?.toLowerCase().includes('person / author')) {
+                    const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1];
+                    if (personVal) {
+                        FILTERS.tagValues = FILTERS.tagValues || [];
+                        FILTERS.tagValues.push({ tag: 'persName', value: personVal });
+                    }
+                }
+                else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:')) {
+                    const signerVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1];
+                    if (signerVal) {
+                        FILTERS.tagValues = FILTERS.tagValues || [];
+                        FILTERS.tagValues.push({ tag: 'signed', value: signerVal });
+                    }
+                }
+                // 6. Feature
+                else if (BINARY_FACET_MAPPING[it.facet] || it.facet?.startsWith('contains_') || it.facet?.startsWith('is_') || it.statement?.toLowerCase().includes('feature:')) {
+                    const mappedKey = BINARY_FACET_MAPPING[it.facet] || it.facet;
+                    FILTERS.feature = { key: mappedKey, value: true };
+                }
+                // 7. Topic
+                else if (it.facet === 'topic' || it.statement?.toLowerCase().startsWith('topic:')) {
+                    const topicId = (it.filter?.values && it.filter.values[0]) || it.facet;
+                    FILTERS.topicId = topicId;
+                }
+            });
+
+            updateDashboard();
+        }
+
+        function applyBackendFacets(facets, intents = []) {
             SEARCH_APPLIED = true;
             // Reset filters logic
             FILTERS.country = null;
             FILTERS.city = null;
             FILTERS.lang = null;
             FILTERS.yearRange = null;
-            FILTERS.feature = null; // Reset binary characteristics
-
-            // Mapping from API facet names to dashboard feature keys
-            const BINARY_FACET_MAPPING = {
-                'medieval_manuscript': 'is_medieval_manuscript',
-                'manuscript': 'is_manuscript',
-                'letter': 'is_letter',
-                'political_letter': 'is_political_letter',
-                'verse': 'contains_verse',
-                'direct_speech': 'contains_direct_speech',
-                'linguistic_annotation': 'contains_linguistic_annotation',
-                'theatre': 'contains_theatre',
-                'east_asian_scripts': 'contains_east_asian_scripts',
-                'japanese_scripts': 'contains_japanese_scripts',
-                'political_protocols': 'contains_political_protocols',
-                'dictionary': 'contains_dictionary',
-                'inscriptions': 'contains_inscriptions',
-                'law_texts': 'contains_law_texts',
-                'newspaper_articles': 'contains_newspaper_articles',
-                'diary': 'contains_diary'
-            };
+            FILTERS.feature = null;
+            FILTERS.topicId = null;
+            FILTERS.properties = [];
 
             // 1. Time
             if (facets.time && facets.time.length > 0) {
-                const years = facets.time[0].values.map(y => parseInt(y)).filter(n => !isNaN(n));
-                if (years.length > 0) {
-                    if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
-                    else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                const values = facets.time[0].values;
+                if (Array.isArray(values)) {
+                    const years = values.map(y => parseInt(y)).filter(n => !isNaN(n));
+                    if (years.length > 0) {
+                        if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
+                        else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                    }
                 }
             }
 
             // 2. Geography
             if (facets.geography && facets.geography.length > 0) {
-                const val = facets.geography[0].values[0];
-                FILTERS.country = val; // Direct assignment
+                const val = facets.geography[0].values?.[0];
+                if (val) {
+                    FILTERS.country = val;
+                }
             }
 
             // 3. Language
             if (facets.language && facets.language.length > 0) {
-                const langMap = { "french": "fr", "english": "en", "german": "de", "latin": "la" };
-                const rawVal = facets.language[0].values[0].toLowerCase();
+                const langMap = { "french": "fr", "english": "en", "german": "de", "latin": "la", "italian": "it", "spanish": "es" };
+                const rawVal = String(facets.language[0].values?.[0] || '').toLowerCase();
                 FILTERS.lang = langMap[rawVal] || rawVal;
             }
 
-            // 4. Binary Characteristics
-            // Apply the first "true" binary facet found (since dashboard supports single feature filter)
-            for (const [apiFacetName, dashboardKey] of Object.entries(BINARY_FACET_MAPPING)) {
-                if (facets[apiFacetName] && facets[apiFacetName].length > 0) {
-                    const facetData = facets[apiFacetName][0];
-                    if (facetData && facetData.values && facetData.values.length > 0) {
-                        const value = facetData.values[0];
-                        if (value && value.toLowerCase() === 'true') {
-                            console.log(`Applied binary facet: ${apiFacetName} -> ${dashboardKey}`);
-                            FILTERS.feature = { key: dashboardKey, value: true };
-                            break; // Apply only the first one found
+            // 4. Topic
+            if (facets.topicId) {
+                FILTERS.topicId = facets.topicId;
+            } else if (Array.isArray(intents)) {
+                const topInt = intents.find(it => it.facet === 'topic' || it.statement?.toLowerCase().startsWith('topic:'));
+                if (topInt) {
+                    FILTERS.topicId = (topInt.filter?.values && topInt.filter.values[0]) || topInt.facet;
+                }
+            }
+
+            // 5. Properties from dynamic MCF curation
+            if (Array.isArray(facets.properties) && facets.properties.length > 0) {
+                FILTERS.properties = facets.properties;
+            }
+
+            // Fallback checking legacy binary facets dictionary
+            if (!FILTERS.feature) {
+                for (const [apiFacetName, dashboardKey] of Object.entries(BINARY_FACET_MAPPING)) {
+                    if (facets[apiFacetName] && facets[apiFacetName].length > 0) {
+                        const facetData = facets[apiFacetName][0];
+                        if (facetData && facetData.values && facetData.values.length > 0) {
+                            const value = facetData.values[0];
+                            if (value && (value.toLowerCase() === 'true' || value === true)) {
+                                FILTERS.feature = { key: dashboardKey, value: true };
+                                break;
+                            }
                         }
                     }
                 }
+            }
+
+            // 5. Raw TEI Tag Values & Extracted Facets
+            EXTRACTED_FACETS = [];
+            if (Array.isArray(intents) && intents.length > 0) {
+                intents.forEach(it => {
+                    if (it.facet && it.facet.startsWith('tag_')) {
+                        const tagName = it.facet.replace('tag_', '');
+                        const cleanLabel = (it.statement || '').replace(/^✨\s*Newly\s*Extracted\s*Facet:\s*/i, '').replace(/\s*\(<.*?>\)$/, '').trim();
+                        EXTRACTED_FACETS.push({
+                            tag: tagName,
+                            value: null,
+                            label: cleanLabel || `<${tagName}>`,
+                            description: it.description || `Extracted from TEI element <${tagName}>`
+                        });
+                    } else if (it.facet === 'persName' || it.statement?.toLowerCase().includes('person / author')) {
+                        const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || 'Person';
+                        EXTRACTED_FACETS.push({
+                            tag: 'persName',
+                            value: personVal,
+                            label: `Person: ${personVal}`,
+                            description: `Filter by author or person "${personVal}" in TEI <persName>`
+                        });
+                    } else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:')) {
+                        const signerVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || 'Signer';
+                        EXTRACTED_FACETS.push({
+                            tag: 'signed',
+                            value: signerVal,
+                            label: `Signatory: ${signerVal}`,
+                            description: `Filter by signatory "${signerVal}" in TEI <signed>`
+                        });
+                    }
+                });
+            }
+
+            if (Array.isArray(facets.tagValues) && facets.tagValues.length > 0) {
+                FILTERS.tagValues = facets.tagValues;
             }
 
             updateDashboard();
@@ -1055,6 +1299,73 @@
             renderSection('Content Characteristics', contentEntries, 'border-t pt-1');
             renderSection('Other', otherEntries, 'border-t pt-1');
 
+            // Dynamically Extracted Facets from TEI Guidelines
+            if (EXTRACTED_FACETS.length > 0) {
+                const h = document.createElement('h4');
+                h.className = "text-[10px] font-bold text-gray-700 uppercase tracking-wider px-0.5 mb-1 mt-2 border-t pt-1.5 flex items-center justify-between";
+                h.innerHTML = `<span>✨ Extracted Facets (TEI)</span>`;
+                container.appendChild(h);
+
+                const extractedGrid = document.createElement('div');
+                extractedGrid.className = "space-y-1 mb-2";
+
+                EXTRACTED_FACETS.forEach(ef => {
+                    const isActive = FILTERS.tagValues && FILTERS.tagValues.some(tv => tv.tag === ef.tag && (!ef.value || tv.value === ef.value));
+                    const row = document.createElement('div');
+                    row.className = "flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer transition-all "
+                        + (isActive ? "bg-amber-50 border-amber-400 text-amber-900 shadow-xs font-semibold" : "bg-sky-50/40 border-sky-200 text-gray-700 hover:bg-sky-50");
+                    row.title = ef.description;
+
+                    row.innerHTML = `
+                        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${isActive ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-sky-100 text-sky-800 border border-sky-200'}">&lt;${escapeHtml(ef.tag)}&gt;</span>
+                            <span class="truncate text-[11px]">${escapeHtml(ef.label)}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0 ml-1">
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${isActive ? 'bg-amber-200 text-amber-900' : 'bg-gray-100 text-gray-500'}">${isActive ? 'ACTIVE' : 'OFF'}</span>
+                            <span class="text-gray-400 hover:text-red-500 text-sm leading-none ml-1 cursor-pointer font-bold px-0.5" title="Remove Facet">&times;</span>
+                        </div>
+                    `;
+
+                    row.querySelector('.hover\\:text-red-500').onclick = (e) => {
+                        e.stopPropagation();
+                        EXTRACTED_FACETS = EXTRACTED_FACETS.filter(item => item !== ef);
+                        FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => !(tv.tag === ef.tag && (!ef.value || tv.value === ef.value)));
+                        if (CURRENT_SEARCH_INTENTS) {
+                            CURRENT_SEARCH_INTENTS.forEach(it => {
+                                if (it.facet === ef.tag || it.facet === `tag_${ef.tag}` || (ef.tag === 'persName' && it.statement?.includes('Person / Author'))) {
+                                    it.active = false;
+                                }
+                            });
+                            renderInteractiveIntentPills();
+                        }
+                        updateDashboard();
+                    };
+
+                    row.onclick = () => {
+                        if (isActive) {
+                            FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => !(tv.tag === ef.tag && (!ef.value || tv.value === ef.value)));
+                        } else {
+                            FILTERS.tagValues = FILTERS.tagValues || [];
+                            FILTERS.tagValues.push(ef.value ? { tag: ef.tag, value: ef.value } : { tag: ef.tag });
+                        }
+                        if (CURRENT_SEARCH_INTENTS) {
+                            CURRENT_SEARCH_INTENTS.forEach(it => {
+                                if (it.facet === ef.tag || it.facet === `tag_${ef.tag}` || (ef.tag === 'persName' && it.statement?.includes('Person / Author'))) {
+                                    it.active = !isActive;
+                                }
+                            });
+                            renderInteractiveIntentPills();
+                        }
+                        updateDashboard();
+                    };
+
+                    extractedGrid.appendChild(row);
+                });
+
+                container.appendChild(extractedGrid);
+            }
+
             // Custom tags
             if (dynamicEntries.length > 0) {
                 renderSection('Custom Tags', dynamicEntries, 'border-t pt-1');
@@ -1118,24 +1429,19 @@
 
                 // Name Display
                 const nameDiv = content.append("div")
-                    .attr("class", d => "font-medium truncate flex-1 " + (FILTERS.topicId === d.id ? "text-amber-900" : "text-gray-700"))
+                    .attr("class", d => "font-medium truncate flex-1 " + (FILTERS.topicId === d.id ? "text-amber-900 font-bold" : "text-gray-700"))
                     .text(d => {
-                        // Use stored name if "meaningful", else construct from words
-                        if (d.name && d.name.length > 3 && !d.name.includes(",")) return d.name;
-
-                        // Fix for char-based tokens (e.g. "H, O, F")
-                        if (d.words && d.words.length > 0 && d.words[0].length === 1) {
-                            if (d.name.includes(",") && d.name.length < 20) {
-                                const fullText = d.words.join("").trim();
-                                const parts = fullText.split(/\s+/).filter(s => s.length > 0);
-                                return parts.slice(0, 4).join(" ");
-                            }
+                        if (d.name && !d.name.startsWith('Topic ')) {
+                            return d.name;
                         }
-                        return d.name;
+                        if (d.words && d.words.length > 0) {
+                            return d.words.slice(0, 3).join(", ");
+                        }
+                        return d.name || d.id;
                     })
                     .attr("title", d => {
                         const words = d.words ? d.words.slice(0, 15).join(", ") : "No keywords";
-                        return `Words: ${words}`;
+                        return `${d.name || d.id}\nTop Keywords: ${words}`;
                     });
 
                 // Edit Button (Visible on Hover)
@@ -1528,22 +1834,61 @@
                 .enter().append("g")
                 .attr("transform", d => `translate(${x(d.year)}, 0)`);
 
-            const activeColor = '#0ea5e9'; // Always Sky 500
+            // Update activeYearBadge
+            const yearBadge = document.getElementById('activeYearBadge');
+            if (yearBadge) {
+                if (FILTERS.yearRange && FILTERS.yearRange.length === 2) {
+                    const label = FILTERS.yearRange[0] === FILTERS.yearRange[1] 
+                        ? `${FILTERS.yearRange[0]}` 
+                        : `${FILTERS.yearRange[0]}–${FILTERS.yearRange[1]}`;
+                    yearBadge.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs";
+                    yearBadge.innerHTML = `<span>⏱️ <b>${label}</b></span><button onclick="clearYearFilter(event)" class="hover:text-red-700 font-bold ml-1 text-sm leading-none" title="Clear time filter">×</button>`;
+                } else {
+                    yearBadge.className = "hidden";
+                    yearBadge.innerHTML = "";
+                }
+            }
+
+            const isYearFiltered = FILTERS.yearRange && FILTERS.yearRange.length === 2;
+            const startYear = isYearFiltered ? FILTERS.yearRange[0] : null;
+            const endYear = isYearFiltered ? FILTERS.yearRange[1] : null;
 
             // 1. Unified Time Bar with Transitions
             bars.append("rect")
                 .attr("x", 0)
                 .attr("width", x.bandwidth())
-                .attr("fill", "#0ea5e9") // Solid Sky 500
+                .attr("fill", d => {
+                    if (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) {
+                        return "#f59e0b"; // Amber 500
+                    }
+                    return isYearFiltered ? "#cbd5e1" : "#0ea5e9";
+                })
+                .attr("stroke", d => {
+                    if (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) {
+                        return "#b45309";
+                    }
+                    return "none";
+                })
+                .attr("stroke-width", d => (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) ? 1.5 : 0)
+                .style("cursor", "pointer")
                 .attr("y", h - margin.bottom)
                 .attr("height", 0)
+                .on("click", (e, d) => {
+                    e.stopPropagation();
+                    if (FILTERS.yearRange && FILTERS.yearRange[0] === d.year && FILTERS.yearRange[1] === d.year + 4) {
+                        FILTERS.yearRange = null;
+                    } else {
+                        FILTERS.yearRange = [d.year, d.year + 4];
+                    }
+                    updateDashboard();
+                })
                 .transition()
                 .duration(750)
                 .ease(d3.easeCubicOut)
                 .attr("y", d => y(d.count))
                 .attr("height", d => y(0) - y(d.count));
 
-            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count}`);
+            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count.toLocaleString()} (Click to filter)`);
 
             // X Axis
             if (x.bandwidth() > 0) {

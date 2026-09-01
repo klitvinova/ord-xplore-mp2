@@ -21,11 +21,20 @@ export default async function handler(req, res) {
       const topicsRes = await dbPool.query('SELECT id, name, words FROM topics ORDER BY id;');
       const featuresRes = await dbPool.query('SELECT name, type FROM attributes_metadata ORDER BY name;');
 
+      let propertiesRows = [];
+      try {
+        const propertiesRes = await dbPool.query('SELECT id, name, display_name, type, description, options FROM properties ORDER BY id;');
+        propertiesRows = propertiesRes.rows;
+      } catch (err) {
+        // Fall back gracefully if properties table is not yet migrated
+      }
+
       res.status(200).json({
         editions: editionsRes.rows,
         languages: languagesRes.rows,
         topics: topicsRes.rows,
         features: featuresRes.rows,
+        properties: propertiesRows,
       });
       return;
     }
@@ -73,7 +82,9 @@ export default async function handler(req, res) {
       clauses.push(`EXISTS (
         SELECT 1 FROM document_time_entities dt
         JOIN time_entities t ON dt.time_entity_id = t.id
-        WHERE dt.document_id = d.id AND dt.date_type = $${paramIndex} AND t.year >= $${paramIndex + 1} AND t.year <= $${paramIndex + 2}
+        WHERE dt.document_id = d.id
+          AND (dt.date_type = $${paramIndex} OR dt.date_type IN ('creation', 'contextual'))
+          AND t.year >= $${paramIndex + 1} AND t.year <= $${paramIndex + 2}
       )`);
       params.push(dateSource, filters.yearRange[0], filters.yearRange[1]);
       paramIndex += 3;
@@ -84,20 +95,40 @@ export default async function handler(req, res) {
       clauses.push(`EXISTS (
         SELECT 1 FROM document_geolocations dg
         JOIN geolocations g ON dg.geolocation_id = g.id
-        WHERE dg.document_id = d.id AND dg.geo_type = $${paramIndex} AND g.name = $${paramIndex + 1}
+        WHERE dg.document_id = d.id
+          AND (dg.geo_type = $${paramIndex} OR dg.geo_type IN ('creation', 'contextual'))
+          AND (g.name ILIKE $${paramIndex + 1} OR g.country ILIKE $${paramIndex + 1})
       )`);
-      params.push(geoSource, filters.city);
+      params.push(geoSource, `%${filters.city}%`);
       paramIndex += 2;
     }
 
     // Country filter
     if (filters.country) {
+      let countryPatterns = [`%${filters.country}%`];
+      const cLower = filters.country.toLowerCase();
+      if (cLower === 'egypt') {
+        countryPatterns = ['%egypt%', '%aegypt%', '%مصر%', '%cairo%', '%alexandria%'];
+      } else if (cLower === 'greece') {
+        countryPatterns = ['%greece%', '%griechenland%', '%hellas%', '%ελλάς%', '%athens%'];
+      } else if (cLower === 'italy') {
+        countryPatterns = ['%italy%', '%italien%', '%italia%', '%rome%', '%rom%', '%venice%', '%florence%'];
+      } else if (cLower === 'germany') {
+        countryPatterns = ['%germany%', '%deutschland%', '%berlin%', '%munich%', '%heidelberg%'];
+      } else if (cLower === 'switzerland') {
+        countryPatterns = ['%switzerland%', '%schweiz%', '%zurich%', '%zürich%', '%basel%', '%bern%', '%geneva%'];
+      } else if (cLower === 'israel') {
+        countryPatterns = ['%israel%', '%palestine%', '%jerusalem%', '%ישראל%'];
+      }
+
       clauses.push(`EXISTS (
         SELECT 1 FROM document_geolocations dg
         JOIN geolocations g ON dg.geolocation_id = g.id
-        WHERE dg.document_id = d.id AND dg.geo_type = $${paramIndex} AND g.country = $${paramIndex + 1}
+        WHERE dg.document_id = d.id
+          AND (dg.geo_type = $${paramIndex} OR dg.geo_type IN ('creation', 'contextual'))
+          AND (g.country ILIKE ANY($${paramIndex + 1}::text[]) OR g.name ILIKE ANY($${paramIndex + 1}::text[]))
       )`);
-      params.push(geoSource, filters.country);
+      params.push(geoSource, countryPatterns);
       paramIndex += 2;
     }
 
@@ -122,13 +153,134 @@ export default async function handler(req, res) {
         params.push(tags);
         paramIndex++;
       } else {
-        clauses.push(`${existOperator} (
-          SELECT 1 FROM document_attributes da
-          JOIN attributes_metadata am ON da.attribute_id = am.id
-          WHERE da.document_id = d.id AND am.name = $${paramIndex}
+        let tagFallbackClause = '';
+        if (key === 'is_letter') {
+          tagFallbackClause = `OR ${existOperator} (
+            SELECT 1 FROM editions ed WHERE ed.id = d.edition_id AND (ed.name ILIKE '%letters%' OR ed.name ILIKE '%brief%' OR ed.name ILIKE '%korrespondenz%')
+          )
+          OR ${existOperator} (
+            SELECT 1 FROM document_tags dt JOIN tags tg ON dt.tag_id = tg.id WHERE dt.document_id = d.id AND tg.name IN ('correspAction', 'opener', 'salute', 'signed', 'correspDesc')
+          )`;
+        } else if (key === 'contains_verse') {
+          tagFallbackClause = `OR ${existOperator} (
+            SELECT 1 FROM document_tags dt JOIN tags tg ON dt.tag_id = tg.id WHERE dt.document_id = d.id AND tg.name IN ('lg', 'l')
+          )`;
+        } else if (key === 'contains_diary') {
+          tagFallbackClause = `OR ${existOperator} (
+            SELECT 1 FROM editions ed WHERE ed.id = d.edition_id AND (ed.name ILIKE '%diar%' OR ed.name ILIKE '%tageb%')
+          )
+          OR ${existOperator} (
+            SELECT 1 FROM document_tags dt JOIN tags tg ON dt.tag_id = tg.id WHERE dt.document_id = d.id AND tg.name IN ('entry')
+          )`;
+        } else if (key === 'is_manuscript') {
+          tagFallbackClause = `OR ${existOperator} (
+            SELECT 1 FROM editions ed WHERE ed.id = d.edition_id AND (ed.name ILIKE '%manuscript%' OR ed.name ILIKE '%handschrift%')
+          )
+          OR ${existOperator} (
+            SELECT 1 FROM document_tags dt JOIN tags tg ON dt.tag_id = tg.id WHERE dt.document_id = d.id AND tg.name IN ('msDesc', 'handDesc', 'physDesc')
+          )`;
+        }
+
+        clauses.push(`(
+          ${existOperator} (
+            SELECT 1 FROM document_attributes da
+            JOIN attributes_metadata am ON da.attribute_id = am.id
+            WHERE da.document_id = d.id AND am.name = $${paramIndex}
+          )
+          OR ${existOperator} (
+            SELECT 1 FROM edition_property_values epv
+            JOIN properties p ON epv.property_id = p.id
+            WHERE epv.edition_id = d.edition_id AND p.name = $${paramIndex}
+              AND (
+                (p.type = 'binary' AND (epv.value = 'true'::jsonb OR epv.value = '"true"'::jsonb))
+                OR (p.type = 'multiple_choice' AND (epv.value ? $${paramIndex + 1} OR epv.value @> jsonb_build_array($${paramIndex + 1})))
+              )
+          )
+          ${tagFallbackClause}
         )`);
-        params.push(key);
-        paramIndex++;
+        params.push(key, typeof value === 'string' ? value : key);
+        paramIndex += 2;
+      }
+    }
+
+    // Dynamic properties array filter (e.g. from MCF intent search or dynamic facets)
+    if (Array.isArray(filters.properties) && filters.properties.length > 0) {
+      for (const propFilter of filters.properties) {
+        if (!propFilter || !propFilter.name) continue;
+        const { name, value } = propFilter;
+        if (value === true || value === 'true') {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM edition_property_values epv
+            JOIN properties p ON epv.property_id = p.id
+            WHERE epv.edition_id = d.edition_id AND p.name = $${paramIndex}
+              AND (epv.value = 'true'::jsonb OR epv.value = '"true"'::jsonb)
+          )`);
+          params.push(name);
+          paramIndex++;
+        } else if (value === false || value === 'false') {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM edition_property_values epv
+            JOIN properties p ON epv.property_id = p.id
+            WHERE epv.edition_id = d.edition_id AND p.name = $${paramIndex}
+              AND (epv.value = 'false'::jsonb OR epv.value = '"false"'::jsonb)
+          )`);
+          params.push(name);
+          paramIndex++;
+        } else if (typeof value === 'string') {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM edition_property_values epv
+            JOIN properties p ON epv.property_id = p.id
+            WHERE epv.edition_id = d.edition_id AND p.name = $${paramIndex}
+              AND (
+                epv.value ? $${paramIndex + 1}
+                OR epv.value @> jsonb_build_array($${paramIndex + 1})
+                OR epv.value#>>'{}' ILIKE $${paramIndex + 2}
+              )
+          )`);
+          params.push(name, value, `%${value}%`);
+          paramIndex += 3;
+        }
+      }
+    }
+
+    // Raw TEI Tag Values Filter (querying document_tag_values)
+    if (Array.isArray(filters.tagValues) && filters.tagValues.length > 0) {
+      for (const tv of filters.tagValues) {
+        if (!tv || !tv.tag) continue;
+        const { tag, value } = tv;
+        if (value) {
+          const cleanSlug = `%${value.toLowerCase().replace(/[^a-z0-9]/g, '%')}%`;
+          clauses.push(`(
+            EXISTS (
+              SELECT 1 FROM document_tag_values dtv
+              WHERE dtv.document_id = d.id 
+                AND (
+                  dtv.tag_name = $${paramIndex}
+                  OR ($${paramIndex} = 'persName' AND dtv.tag_name IN ('persName', 'author', 'speaker', 'signed'))
+                )
+                AND dtv.value ILIKE $${paramIndex + 1}
+            )
+            OR (
+              $${paramIndex} = 'persName' AND (
+                d.name ILIKE $${paramIndex + 1}
+                OR EXISTS (
+                  SELECT 1 FROM editions ed
+                  WHERE ed.id = d.edition_id AND (ed.name ILIKE $${paramIndex + 1} OR ed.name ILIKE $${paramIndex + 2})
+                )
+              )
+            )
+          )`);
+          params.push(tag, `%${value}%`, cleanSlug);
+          paramIndex += 3;
+        } else {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM document_tags dt
+            JOIN tags tg ON dt.tag_id = tg.id
+            WHERE dt.document_id = d.id AND tg.name = $${paramIndex}
+          )`);
+          params.push(tag);
+          paramIndex++;
+        }
       }
     }
 
@@ -224,7 +376,13 @@ export default async function handler(req, res) {
         };
       });
 
-      // 4. Features Aggregation
+      // 4. Features Aggregation (pre-populate all known attributes so characteristic tiles never disappear)
+      const allAttrsRes = await client.query('SELECT name FROM attributes_metadata;');
+      const featuresMap = {};
+      allAttrsRes.rows.forEach(r => {
+        featuresMap[r.name] = 0;
+      });
+
       const featureQuery = `
         SELECT am.name as key, ${countExpr} as count
         FROM temp_docs t
@@ -233,7 +391,6 @@ export default async function handler(req, res) {
         GROUP BY am.name;
       `;
       const featureAgg = await client.query(featureQuery);
-      const featuresMap = {};
       featureAgg.rows.forEach(r => {
         featuresMap[r.key] = parseInt(r.count);
       });
