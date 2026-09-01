@@ -179,25 +179,49 @@ function resolveHeuristicIntent(query, dynamicProperties) {
     properties: []
   };
 
-  // Time detection
-  const rangeMatch = q.match(/\b(1\d{3}|20\d{2})\s*(?:to|-|until)\s*(1\d{3}|20\d{2})\b/);
-  if (rangeMatch) {
-    const y1 = parseInt(rangeMatch[1]);
-    const y2 = parseInt(rangeMatch[2]);
-    facets.time = [{ op: 'range', values: [Math.min(y1, y2), Math.max(y1, y2)] }];
-    intents.push({ statement: `Time: ${Math.min(y1, y2)}–${Math.max(y1, y2)}`, facet: 'time', filter: facets.time[0] });
-  } else if (/\b18th century\b/i.test(q)) {
-    facets.time = [{ op: 'range', values: [1700, 1799] }];
-    intents.push({ statement: 'Time: 18th Century (1700-1799)', facet: 'time', filter: facets.time[0] });
-  } else if (/\b19th century\b/i.test(q)) {
-    facets.time = [{ op: 'range', values: [1800, 1899] }];
-    intents.push({ statement: 'Time: 19th Century (1800-1899)', facet: 'time', filter: facets.time[0] });
-  } else {
-    const singleYear = q.match(/\b(1\d{3}|20\d{2})\b/);
-    if (singleYear) {
-      const yr = parseInt(singleYear[1]);
-      facets.time = [{ op: 'include', values: [yr] }];
-      intents.push({ statement: `Time: ${yr}`, facet: 'time', filter: facets.time[0] });
+  // Historical Eras, Wars & Time detection
+  const eraKnowledge = [
+    { pattern: /\b(?:second\s+world\s+war|world\s+war\s+(?:ii|2)|ww(?:ii|2)|zweiter\s+weltkrieg)\b/i, label: 'Second World War (1939-1945)', range: [1939, 1945] },
+    { pattern: /\b(?:first\s+world\s+war|world\s+war\s+(?:i|1)|ww(?:i|1)|erster\s+weltkrieg)\b/i, label: 'First World War (1914-1918)', range: [1914, 1918] },
+    { pattern: /\b(?:cold\s+war|kalter\s+krieg)\b/i, label: 'Cold War (1947-1991)', range: [1947, 1991] },
+    { pattern: /\b(?:thirty\s+years\s+war|dreissigjähriger\s+krieg|dreißigjähriger\s+krieg)\b/i, label: 'Thirty Years War (1618-1648)', range: [1618, 1648] },
+    { pattern: /\b(?:french\s+revolution|französische\s+revolution)\b/i, label: 'French Revolution (1789-1799)', range: [1789, 1799] },
+    { pattern: /\b(?:american\s+civil\s+war)\b/i, label: 'American Civil War (1861-1865)', range: [1861, 1865] },
+    { pattern: /\b(?:enlightenment|aufklärung)\b/i, label: 'Enlightenment (1715-1789)', range: [1715, 1789] },
+    { pattern: /\b(?:renaissance|early\s+modern|frühe\s+neuzeit)\b/i, label: 'Renaissance & Early Modern (1400-1650)', range: [1400, 1650] },
+    { pattern: /\b(?:middle\s+ages|medieval|mittelalter)\b/i, label: 'Middle Ages (500-1500)', range: [500, 1500] },
+    { pattern: /\b20th\s+century\b/i, label: '20th Century (1900-1999)', range: [1900, 1999] },
+    { pattern: /\b19th\s+century\b/i, label: '19th Century (1800-1899)', range: [1800, 1899] },
+    { pattern: /\b18th\s+century\b/i, label: '18th Century (1700-1799)', range: [1700, 1799] },
+    { pattern: /\b17th\s+century\b/i, label: '17th Century (1600-1699)', range: [1600, 1699] },
+    { pattern: /\b16th\s+century\b/i, label: '16th Century (1500-1599)', range: [1500, 1599] },
+    { pattern: /\b15th\s+century\b/i, label: '15th Century (1400-1499)', range: [1400, 1499] }
+  ];
+
+  let detectedEra = false;
+  for (const era of eraKnowledge) {
+    if (era.pattern.test(q)) {
+      facets.time = [{ op: 'range', values: era.range }];
+      intents.push({ statement: `Time: ${era.label}`, facet: 'time', filter: facets.time[0] });
+      detectedEra = true;
+      break;
+    }
+  }
+
+  if (!detectedEra) {
+    const rangeMatch = q.match(/\b(1\d{3}|20\d{2})\s*(?:to|-|until)\s*(1\d{3}|20\d{2})\b/);
+    if (rangeMatch) {
+      const y1 = parseInt(rangeMatch[1]);
+      const y2 = parseInt(rangeMatch[2]);
+      facets.time = [{ op: 'range', values: [Math.min(y1, y2), Math.max(y1, y2)] }];
+      intents.push({ statement: `Time: ${Math.min(y1, y2)}–${Math.max(y1, y2)}`, facet: 'time', filter: facets.time[0] });
+    } else {
+      const singleYear = q.match(/\b(1\d{3}|20\d{2})\b/);
+      if (singleYear) {
+        const yr = parseInt(singleYear[1]);
+        facets.time = [{ op: 'include', values: [yr] }];
+        intents.push({ statement: `Time: ${yr}`, facet: 'time', filter: facets.time[0] });
+      }
     }
   }
 
@@ -280,7 +304,7 @@ function resolveHeuristicIntent(query, dynamicProperties) {
     { id: 'T24', name: 'Art & Illustration', patterns: [/\bart\s+(&|and)\s+illustration\b/i, /\billustrations?\b/i, /\bart\s+history\b/i] },
     { id: 'T25', name: 'Latin Roman Monuments', patterns: [/\broman\s+monuments?\b/i, /\blatin\s+monuments?\b/i, /\broman\s+epigraphy\b/i] },
     { id: 'T28', name: 'Archaeology & Figures', patterns: [/\barchaeolog(?:y|ical)\b/i, /\barchaeological\s+figures?\b/i] },
-    { id: 'T29', name: 'Botany & Flora', patterns: [/\bbotan(?:y|ical)\b/i, /\bflora\b/i, /\bplant\s+specimens?\b/i] },
+    { id: 'T29', name: 'Botany & Flora', patterns: [/\bbotan(?:y|ical|ics)?\b/i, /\bflora\b/i, /\bplant\s+specimens?\b/i] },
     { id: 'T31', name: 'Political Negotiations', patterns: [/\bpolitical\s+negotiations?\b/i, /\bdiplomatic\s+negotiations?\b/i] },
     { id: 'T32', name: 'Scientific Theory & Discussion', patterns: [/\bscientific\s+theory\b/i, /\bscientific\s+discussions?\b/i] },
     { id: 'T33', name: 'Spatial Planning Commission', patterns: [/\bspatial\s+planning\b/i, /\burban\s+planning\b/i, /\bplanning\s+commission\b/i] },
@@ -451,12 +475,12 @@ function resolveHeuristicIntent(query, dynamicProperties) {
     }
   }
 
-  // Preposition match (e.g. letters by X, to X, about X)
+  // Preposition match (e.g. letters by X, author X, written by X)
   if (!detectedPerson) {
-    const personMatch = query.match(/(?:person|author|writer|by|to|for|about)\s+([A-Za-z\s]+?)(?=\s+(?:in|from|at|around|between|with|dated)\b|$)/i);
+    const personMatch = query.match(/(?:person|author|writer|written\s+by|authored\s+by|by)\s+([A-Za-z\s]+?)(?=\s+(?:in|from|at|around|between|with|dated|about)\b|$)/i);
     if (personMatch) {
       const p = personMatch[1].trim();
-      if (p && !['the', 'a', 'an', 'french', 'german', 'latin', 'english', 'verse', 'poetry', 'letters', 'dramatic', 'theatrical', 'legal', 'political'].includes(p.toLowerCase())) {
+      if (p && !['the', 'a', 'an', 'french', 'german', 'latin', 'english', 'verse', 'poetry', 'letters', 'dramatic', 'theatrical', 'legal', 'political', 'botany', 'botanics', 'science', 'history'].includes(p.toLowerCase())) {
         detectedPerson = p;
       }
     }
@@ -485,13 +509,17 @@ function resolveHeuristicIntent(query, dynamicProperties) {
 
   return {
     scope: {
-      decision: 'supported',
-      reason: 'Structured metadata facets and TEI tags successfully identified.',
-      message: 'Applied matching metadata filters and TEI tags to the dashboard.'
+      decision: intents.length > 0 ? 'supported' : 'unclear',
+      reason: intents.length > 0
+        ? 'Structured metadata facets, eras, and TEI tags successfully identified.'
+        : `No specific time period, person, location, or characteristics matched "${query}".`,
+      message: intents.length > 0
+        ? 'Applied matching metadata filters and TEI tags to the dashboard.'
+        : 'Tip: Try searching for historical eras (e.g. "Second World War", "18th century"), persons, places, languages, or features.'
     },
     intents,
     facets,
-    message: intents.length > 0 ? `Filtered by ${intents.map(i => i.statement).join(', ')}.` : 'Query parsed.'
+    message: intents.length > 0 ? `Filtered by ${intents.map(i => i.statement).join(', ')}.` : `No structured filters found for "${query}".`
   };
 }
 

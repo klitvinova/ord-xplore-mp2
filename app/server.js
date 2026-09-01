@@ -14,6 +14,7 @@ import tagsHandler from './api/tags.js';
 import analyzeHandler from './api/analyze.js';
 import manageHandler from './api/manage.js';
 import propertiesHandler from './api/properties.js';
+import documentHandler from './api/document.js';
 
 // Mock request body parser
 async function parseBody(req) {
@@ -72,6 +73,7 @@ const server = http.createServer(async (req, res) => {
      '/api/analyze': analyzeHandler,
      '/api/manage': manageHandler,
      '/api/properties': propertiesHandler,
+     '/api/document': documentHandler,
   };
 
   const apiHandler = API_ROUTES[pathname];

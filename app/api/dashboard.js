@@ -356,17 +356,23 @@ export default async function handler(req, res) {
 
       // 3. Geolocations Aggregation
       const geoQuery = `
-        SELECT g.name as city, g.country, ST_Y(g.geometry) as lat, ST_X(g.geometry) as lng, ${countExpr} as total
+        SELECT g.name as city,
+               MAX(g.country) as country,
+               AVG(ST_Y(g.geometry)) as lat,
+               AVG(ST_X(g.geometry)) as lng,
+               ${countExpr} as total
         FROM temp_docs t
         JOIN document_geolocations dg ON t.id = dg.document_id
         JOIN geolocations g ON dg.geolocation_id = g.id
         WHERE dg.geo_type = $1
-        GROUP BY g.name, g.country, g.geometry;
+        GROUP BY g.name;
       `;
       const geoAgg = await client.query(geoQuery, [geoSource]);
       const citiesMap = {};
       geoAgg.rows.forEach(r => {
-        citiesMap[r.city] = {
+        const cleanName = (r.city || '').trim();
+        if (!cleanName) return;
+        citiesMap[cleanName] = {
           total: parseInt(r.total),
           confirmed: parseInt(r.total),
           inferred: 0,
@@ -429,13 +435,30 @@ export default async function handler(req, res) {
 
       // 6. Editions Aggregation
       const edAggQuery = `
-        SELECT ed.name, ${countExpr} as count
+        SELECT ed.name, ed.description, ${countExpr} as count
         FROM temp_docs t
         JOIN editions ed ON t.edition_id = ed.id
-        GROUP BY ed.name;
+        GROUP BY ed.name, ed.description
+        ORDER BY count DESC;
       `;
       const edAgg = await client.query(edAggQuery);
       const editionsList = edAgg.rows.map(r => r.name);
+      const editionDetails = edAgg.rows.map(r => ({
+        name: r.name,
+        description: r.description || '',
+        count: parseInt(r.count)
+      }));
+
+      // 7. Sample of matching documents (up to 100)
+      const docSampleQuery = `
+        SELECT d.id, d.name as name, ed.name as edition_name
+        FROM temp_docs t
+        JOIN documents d ON t.id = d.id
+        JOIN editions ed ON d.edition_id = ed.id
+        ORDER BY d.id
+        LIMIT 100;
+      `;
+      const docSampleRes = await client.query(docSampleQuery);
 
       await client.query('COMMIT');
 
@@ -447,7 +470,9 @@ export default async function handler(req, res) {
         cities: citiesMap,
         features: featuresMap,
         topics: topicsMap,
-        editions: editionsList
+        editions: editionsList,
+        editionDetails,
+        documents: docSampleRes.rows
       });
 
     } catch (err) {

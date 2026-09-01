@@ -595,6 +595,14 @@
                 updateMap(data.cities);
                 renderEditionList(new Set(data.editions));
 
+                // Save subset data for inspector modal
+                CURRENT_SUBSET_DATA = {
+                    totalDocs: data.totalDocs,
+                    totalEditions: data.totalEditions,
+                    editions: data.editionDetails || [],
+                    documents: data.documents || []
+                };
+
                 // Topics hierarchy counts
                 const activeTopics = new Map(Object.entries(data.topics || {}));
 
@@ -610,6 +618,12 @@
                 attachCounts(TOPIC_HIERARCHY);
                 renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
 
+                // If modal is open, refresh its content
+                const modal = document.getElementById('subsetModal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    renderSubsetModalContent();
+                }
+
             } catch (err) {
                 console.error("Error updating dashboard:", err);
                 document.getElementById('statsline').innerHTML =
@@ -619,7 +633,7 @@
 
         function renderStatsLine(count, editionsCount) {
             document.getElementById('statsline').innerHTML = 
-                `<b>${count.toLocaleString()}</b> documents across <b>${editionsCount.toLocaleString()}</b> digital editions loaded from database.`;
+                `<b>${count.toLocaleString()}</b> Documents &bull; <b>${editionsCount.toLocaleString()}</b> Editions <button type="button" onclick="openSubsetModal('editions')" class="ml-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 px-2.5 py-0.5 rounded border border-gray-300 font-medium inline-flex items-center gap-1 transition-colors shadow-2xs cursor-pointer" title="Inspect matching editions and documents list"><span>📋 Browse Filtered Items</span></button>`;
         }
 
         // NOTE: the old `includeInferredDate` toggle was removed. The schema's
@@ -1578,9 +1592,6 @@
             "unknown": "Unknown"
         };
 
-        function renderStatsLine(docs, eds) {
-            document.getElementById('statsline').innerHTML = `<span class="font-bold text-gray-900">${docs.toLocaleString()}</span> Documents | <span class="font-bold text-gray-900">${eds}</span> Editions`;
-        }
         function renderLangChart(langs) {
             const data = Object.entries(langs)
                 .map(([k, v]) => ({
@@ -1888,7 +1899,7 @@
                 .attr("y", d => y(d.count))
                 .attr("height", d => y(0) - y(d.count));
 
-            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count.toLocaleString()} (Click to filter)`);
+            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\n${VIEW_MODE === 'edition' ? 'Editions' : 'Documents'}: ${d.count.toLocaleString()} (Click to filter)`);
 
             // X Axis
             if (x.bandwidth() > 0) {
@@ -1989,7 +2000,379 @@
             }
         }
 
+        // --- Subset Inspector Modal ---
+        let CURRENT_SUBSET_DATA = { totalDocs: 0, totalEditions: 0, editions: [], documents: [] };
+        let CURRENT_SUBSET_TAB = 'editions';
+        let SELECTED_EDITION_DRILLDOWN = null;
+
+        function openSubsetModal(tab = 'editions') {
+            CURRENT_SUBSET_TAB = tab;
+            if (tab === 'editions') {
+                SELECTED_EDITION_DRILLDOWN = null;
+            }
+            const modal = document.getElementById('subsetModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                document.getElementById('subsetSearchInput').value = '';
+                renderSubsetModalContent();
+            }
+        }
+
+        function closeSubsetModal() {
+            const modal = document.getElementById('subsetModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function switchSubsetTab(tab) {
+            CURRENT_SUBSET_TAB = tab;
+            renderSubsetModalContent();
+        }
+
+        function drillDownToEditionDocs(editionName) {
+            SELECTED_EDITION_DRILLDOWN = editionName;
+            CURRENT_SUBSET_TAB = 'docs';
+            renderSubsetModalContent();
+        }
+
+        function clearEditionDrillDown() {
+            SELECTED_EDITION_DRILLDOWN = null;
+            renderSubsetModalContent();
+        }
+
+        function filterSubsetItems() {
+            renderSubsetModalContent();
+        }
+
+        function renderSubsetModalContent() {
+            const body = document.getElementById('subsetModalBody');
+            const edCountSpan = document.getElementById('subsetModalEdCount');
+            const docCountSpan = document.getElementById('subsetModalDocCount');
+            const badge = document.getElementById('subsetModalBadge');
+            const subtitle = document.getElementById('subsetModalSubtitle');
+            const tabEd = document.getElementById('tabBtnEditions');
+            const tabDoc = document.getElementById('tabBtnDocs');
+            const footerStats = document.getElementById('subsetModalFooterStats');
+            const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim().toLowerCase();
+
+            if (!body) return;
+
+            const totalDocs = CURRENT_SUBSET_DATA.totalDocs || 0;
+            const totalEds = (CURRENT_SUBSET_DATA.editions || []).length;
+            edCountSpan.textContent = totalEds.toLocaleString();
+            docCountSpan.textContent = totalDocs.toLocaleString();
+
+            badge.textContent = `${totalDocs.toLocaleString()} Docs / ${totalEds.toLocaleString()} Editions`;
+            subtitle.textContent = SEARCH_APPLIED 
+                ? "Active Filters & Intents applied" 
+                : "Complete unconstrained digital corpus";
+
+            if (CURRENT_SUBSET_TAB === 'editions') {
+                tabEd.className = "px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
+                tabDoc.className = "px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent";
+
+                const editions = (CURRENT_SUBSET_DATA.editions || []).filter(ed => {
+                    if (!searchVal) return true;
+                    return (ed.name || '').toLowerCase().includes(searchVal) || (ed.description || '').toLowerCase().includes(searchVal);
+                });
+
+                if (editions.length === 0) {
+                    body.innerHTML = `<div class="text-center py-12 text-gray-400 text-sm">No matching editions found.</div>`;
+                    footerStats.textContent = `Showing 0 of ${totalEds.toLocaleString()} editions`;
+                    return;
+                }
+
+                footerStats.textContent = `Showing ${editions.length.toLocaleString()} of ${totalEds.toLocaleString()} editions in view (Click an edition to drill down to its documents)`;
+
+                const maxCount = Math.max(...editions.map(e => e.count), 1);
+
+                body.innerHTML = `
+                    <div class="space-y-2">
+                        ${editions.map(ed => {
+                            const label = (ed.name || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                            const pct = totalDocs > 0 ? ((ed.count / totalDocs) * 100).toFixed(1) : 0;
+                            const barWidth = Math.max((ed.count / maxCount) * 100, 2);
+
+                            return `
+                                <div onclick="drillDownToEditionDocs('${escapeHtml(ed.name)}')" class="p-3 rounded-lg border border-gray-200 bg-white hover:border-amber-400 hover:shadow-sm cursor-pointer transition-all flex items-center justify-between gap-4 group">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="font-bold text-gray-900 text-sm truncate group-hover:text-amber-900 transition-colors">${escapeHtml(label)}</h4>
+                                            <span class="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">${escapeHtml(ed.name)}</span>
+                                        </div>
+                                        ${ed.description && ed.description !== `Description for ${ed.name}` ? `<p class="text-xs text-gray-500 truncate mt-0.5">${escapeHtml(ed.description)}</p>` : ''}
+                                        <div class="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div class="bg-amber-500 h-full rounded-full" style="width: ${barWidth}%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-3 shrink-0">
+                                        <div class="text-right">
+                                            <div class="text-base font-bold text-gray-900">${ed.count.toLocaleString()} <span class="text-xs font-normal text-gray-500">docs (${pct}%)</span></div>
+                                        </div>
+                                        <button type="button" class="px-2.5 py-1 text-xs font-semibold bg-gray-100 group-hover:bg-amber-100 group-hover:text-amber-900 text-gray-700 rounded border border-gray-200 group-hover:border-amber-300 transition-colors">
+                                            📄 View Docs &rarr;
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+
+            } else {
+                tabDoc.className = "px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
+                tabEd.className = "px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent";
+
+                let docs = (CURRENT_SUBSET_DATA.documents || []);
+                
+                // If drilldown active, filter by edition
+                if (SELECTED_EDITION_DRILLDOWN) {
+                    docs = docs.filter(d => d.edition_name === SELECTED_EDITION_DRILLDOWN);
+                }
+
+                if (searchVal) {
+                    docs = docs.filter(d => (d.name || '').toLowerCase().includes(searchVal) || (d.edition_name || '').toLowerCase().includes(searchVal) || String(d.id).includes(searchVal));
+                }
+
+                const drilldownBanner = SELECTED_EDITION_DRILLDOWN ? `
+                    <div class="mb-3 px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-amber-950">Drilldown Filter:</span>
+                            <span class="px-2 py-0.5 rounded bg-amber-200 text-amber-950 font-bold">${escapeHtml(SELECTED_EDITION_DRILLDOWN.replace(/_/g, ' '))}</span>
+                            <span class="text-gray-500">(${docs.length} matching sample documents)</span>
+                        </div>
+                        <button type="button" onclick="clearEditionDrillDown()" class="px-2 py-0.5 bg-white text-amber-900 hover:bg-amber-100 border border-amber-300 rounded font-semibold text-xs transition-colors cursor-pointer">
+                            Show All Editions &times;
+                        </button>
+                    </div>
+                ` : '';
+
+                if (docs.length === 0) {
+                    body.innerHTML = `
+                        ${drilldownBanner}
+                        <div class="text-center py-12 text-gray-400 text-sm">No matching documents found.</div>
+                    `;
+                    footerStats.textContent = `Showing 0 documents`;
+                    return;
+                }
+
+                footerStats.textContent = SELECTED_EDITION_DRILLDOWN 
+                    ? `Showing ${docs.length.toLocaleString()} documents from ${SELECTED_EDITION_DRILLDOWN}`
+                    : `Displaying first ${docs.length.toLocaleString()} matching documents (from ${totalDocs.toLocaleString()} total docs)`;
+
+                body.innerHTML = `
+                    ${drilldownBanner}
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase font-semibold">
+                                <tr>
+                                    <th class="px-4 py-2.5 w-20">Doc ID</th>
+                                    <th class="px-4 py-2.5">Document File / Slug</th>
+                                    <th class="px-4 py-2.5">Edition</th>
+                                    <th class="px-4 py-2.5 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                ${docs.map((d, i) => `
+                                    <tr onclick="openDocumentReader(${d.id})" class="hover:bg-amber-50/40 cursor-pointer transition-colors">
+                                        <td class="px-4 py-2.5 font-mono text-gray-400">${d.id}</td>
+                                        <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(d.name)}</td>
+                                        <td class="px-4 py-2.5 text-gray-600">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800">
+                                                ${escapeHtml(d.edition_name.replace(/_/g, ' '))}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2.5 text-right">
+                                            <button type="button" onclick="event.stopPropagation(); openDocumentReader(${d.id})" class="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-amber-100 hover:text-amber-950 border border-gray-200 hover:border-amber-300 rounded cursor-pointer transition-all inline-flex items-center gap-1">
+                                                <span>🔍 Tags & Entities</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
+
+        // --- Document Details (Extracted Tags & Entities Modal) ---
+        let CURRENT_DOC_DATA = null;
+
+        async function openDocumentReader(docId) {
+            const modal = document.getElementById('docReaderModal');
+            const titleEl = document.getElementById('docReaderTitle');
+            const editionEl = document.getElementById('docReaderEdition');
+            const metaBadgesEl = document.getElementById('docReaderMetaBadges');
+            const bodyEl = document.getElementById('docReaderBody');
+
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            titleEl.textContent = `Document #${docId}`;
+            editionEl.textContent = '';
+            metaBadgesEl.innerHTML = '';
+            bodyEl.innerHTML = `<div class="flex items-center justify-center py-24 text-gray-400 text-sm gap-2">
+                <svg class="animate-spin h-5 w-5 text-sky-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span>Loading Extracted Tags & Entities...</span>
+            </div>`;
+
+            try {
+                const res = await fetch(`/api/document?id=${docId}`);
+                if (!res.ok) throw new Error('Failed to load document details');
+                const doc = await res.json();
+                CURRENT_DOC_DATA = doc;
+                renderDocumentReaderContent();
+            } catch (err) {
+                console.error(err);
+                bodyEl.innerHTML = `<div class="p-8 text-center text-rose-500 font-medium">${escapeHtml(err.message || 'Error loading document')}</div>`;
+            }
+        }
+
+        function closeDocumentReader() {
+            const modal = document.getElementById('docReaderModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function renderDocumentReaderContent() {
+            if (!CURRENT_DOC_DATA) return;
+            const doc = CURRENT_DOC_DATA;
+            const titleEl = document.getElementById('docReaderTitle');
+            const editionEl = document.getElementById('docReaderEdition');
+            const metaBadgesEl = document.getElementById('docReaderMetaBadges');
+            const bodyEl = document.getElementById('docReaderBody');
+
+            titleEl.textContent = doc.name;
+            editionEl.textContent = doc.edition.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+            // Build metadata badges
+            const badges = [];
+            if (doc.dates && doc.dates.length > 0) {
+                const yrs = [...new Set(doc.dates.map(d => d.year))].join(', ');
+                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-amber-100 text-amber-900 border border-amber-300 font-medium">⏱️ ${yrs}</span>`);
+            }
+            if (doc.places && doc.places.length > 0) {
+                const pl = doc.places.slice(0, 4).map(p => p.name).join(', ');
+                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-medium">📍 ${escapeHtml(pl)}</span>`);
+            }
+            if (doc.languages && doc.languages.length > 0) {
+                const lng = doc.languages.map(l => l.name || l.iso).join(', ');
+                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-blue-100 text-blue-900 border border-blue-300 font-medium">🌐 ${escapeHtml(lng)}</span>`);
+            }
+            if (doc.topics && doc.topics.length > 0) {
+                const tp = doc.topics.map(t => t.name).join(', ');
+                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-purple-100 text-purple-900 border border-purple-300 font-medium">🏷️ ${escapeHtml(tp)}</span>`);
+            }
+            metaBadgesEl.innerHTML = badges.join('');
+
+            // Render Extracted Tags & Entities table
+            const tagRows = doc.tagValues || [];
+            if (tagRows.length === 0) {
+                bodyEl.innerHTML = `<div class="text-center py-16 text-gray-400 text-sm">No structured tag values extracted for this document.</div>`;
+                return;
+            }
+
+            bodyEl.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-xs text-gray-700 uppercase">Extracted TEI Tags & Values (${tagRows.length})</h4>
+                        <span class="text-xs text-gray-500 font-normal">Indexed from XML</span>
+                    </div>
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-2xs">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
+                                <tr>
+                                    <th class="px-4 py-2.5 w-36">TEI Tag</th>
+                                    <th class="px-4 py-2.5">Extracted Value / Text Entity</th>
+                                    <th class="px-4 py-2.5 w-24 text-right">Occurrences</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                ${tagRows.map(tr => `
+                                    <tr class="hover:bg-amber-50/30 transition-colors">
+                                        <td class="px-4 py-2 font-mono text-sky-700 font-bold">&lt;${escapeHtml(tr.tag_name)}&gt;</td>
+                                        <td class="px-4 py-2 text-gray-900 font-medium">${escapeHtml(tr.value)}</td>
+                                        <td class="px-4 py-2 text-right text-gray-500 font-mono">${tr.count}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
     </script>
+
+    <!-- Filtered Subset Viewer Modal -->
+    <div id="subsetModal" class="hidden fixed inset-0 z-[2000] overflow-y-auto bg-black/40 flex items-center justify-center p-4" onclick="if(event.target === this) closeSubsetModal()">
+        <div class="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80">
+                <div>
+                    <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <span>Filtered Subset Inspector</span>
+                        <span id="subsetModalBadge" class="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-900 border border-amber-300"></span>
+                    </h3>
+                    <p id="subsetModalSubtitle" class="text-xs text-gray-500 mt-0.5"></p>
+                </div>
+                <button type="button" onclick="closeSubsetModal()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1 leading-none cursor-pointer">&times;</button>
+            </div>
+
+            <!-- Tab Controls & Search -->
+            <div class="flex items-center justify-between px-6 py-2.5 border-b border-gray-200 bg-white">
+                <div class="flex gap-2">
+                    <button type="button" id="tabBtnEditions" onclick="switchSubsetTab('editions')" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
+                        📚 Editions in view (<span id="subsetModalEdCount">0</span>)
+                    </button>
+                    <button type="button" id="tabBtnDocs" onclick="switchSubsetTab('docs')" class="px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent cursor-pointer">
+                        📄 Documents in view (<span id="subsetModalDocCount">0</span>)
+                    </button>
+                </div>
+                <div class="relative w-64">
+                    <input type="text" id="subsetSearchInput" oninput="filterSubsetItems()" placeholder="Filter items..." class="w-full text-xs border border-gray-300 rounded px-2.5 py-1 focus:ring-1 focus:ring-blue-500 focus:outline-none pr-6">
+                    <button type="button" onclick="document.getElementById('subsetSearchInput').value=''; filterSubsetItems();" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">&times;</button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div id="subsetModalBody" class="flex-1 overflow-y-auto p-6 min-h-[300px] max-h-[55vh]">
+                <!-- Dynamic Content -->
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span id="subsetModalFooterStats"></span>
+                <button type="button" onclick="closeSubsetModal()" class="px-4 py-1.5 bg-gray-800 text-white rounded font-medium hover:bg-gray-700 transition-colors cursor-pointer">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Document Details (Extracted Tags & Entities Modal) -->
+    <div id="docReaderModal" class="hidden fixed inset-0 z-[3000] overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="if(event.target === this) closeDocumentReader()">
+        <div class="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 id="docReaderTitle" class="text-base font-bold text-gray-900">Document Information</h3>
+                        <span id="docReaderEdition" class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-200 text-gray-800"></span>
+                    </div>
+                    <div id="docReaderMetaBadges" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+                </div>
+                <button type="button" onclick="closeDocumentReader()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1 leading-none cursor-pointer">&times;</button>
+            </div>
+
+            <!-- Content Area -->
+            <div id="docReaderBody" class="flex-1 overflow-y-auto p-6 min-h-[350px] max-h-[60vh] bg-white">
+                <!-- Dynamic Content -->
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span>Extracted TEI entities and metadata</span>
+                <button type="button" onclick="closeDocumentReader()" class="px-4 py-1.5 bg-gray-800 text-white rounded font-medium hover:bg-gray-700 transition-colors cursor-pointer">Close</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
