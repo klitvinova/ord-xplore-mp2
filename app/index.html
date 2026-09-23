@@ -82,7 +82,10 @@
         class="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center shadow-sm z-[1000] relative shrink-0">
         <div class="flex-1 flex items-center gap-4">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
+                    <span id="serverModeBadge" class="hidden text-[11px] px-2 py-0.5 rounded font-bold ml-3 items-center gap-1 border"></span>
+                </div>
                 <p class="text-sm text-gray-500" id="statsline">Loading data...</p>
             </div>
 
@@ -496,8 +499,26 @@
             d3.json(`topics_hierarchy.json?v=${t}`).catch(err => {
                 console.warn("topics_hierarchy.json fallback to dbMeta:", err);
                 return null;
-            })
-        ]).then(([dbMeta, topicRes]) => {
+            }),
+            fetch(`/api/info?v=${t}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ]).then(([dbMeta, topicRes, serverInfo]) => {
+            // Render Server Mode Badge
+            const badgeEl = document.getElementById('serverModeBadge');
+            // Engine badge from /api/info; amber when migrations are missing.
+            if (badgeEl && serverInfo) {
+                const missing = (serverInfo.database && serverInfo.database.missingTables) || [];
+                const tone = missing.length
+                    ? 'bg-amber-100 text-amber-950 border-amber-300'
+                    : serverInfo.engine === 'heuristic'
+                        ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
+                        : 'bg-purple-100 text-purple-950 border-purple-300';
+                badgeEl.className = `inline-flex text-[11px] px-2 py-0.5 rounded font-bold ml-3 items-center gap-1 border ${tone}`;
+                badgeEl.textContent = serverInfo.engineName || serverInfo.engine || 'Intent engine';
+                badgeEl.title = missing.length
+                    ? `Database is missing: ${missing.map(m => m.table).join(', ')}. Some filters are skipped until these migrations run.`
+                    : `Search queries are interpreted by ${serverInfo.engineName}.`;
+            }
+
             TOPIC_HIERARCHY = (Array.isArray(topicRes) && topicRes.length > 0) ? topicRes : (dbMeta.topics || []);
             ALL_FEATURES = dbMeta.features || [];
 
@@ -584,6 +605,9 @@
 
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Dashboard API returned an error');
+                if (Array.isArray(data.warnings) && data.warnings.length) {
+                    console.warn('Dashboard filters skipped:', data.warnings);
+                }
 
                 renderStatsLine(data.totalDocs, data.totalEditions);
                 renderLangChart(data.langs);
@@ -766,7 +790,7 @@
                 return;
             }
 
-            statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><svg class="animate-spin h-3.5 w-3.5 text-blue-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing query with CaISI Intent Engine...</span>`;
+            statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><svg class="animate-spin h-3.5 w-3.5 text-blue-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Interpreting query...</span>`;
             statusEl.classList.remove('hidden');
             messageEl.classList.add('hidden');
 
@@ -824,7 +848,7 @@
                 statusEl.innerHTML = `
                     <div class="space-y-1 py-0.5">
                         <div class="font-semibold text-emerald-700 flex items-center justify-between text-xs">
-                            <span class="flex items-center gap-1">✨ CaISI Intent Match</span>
+                            <span class="flex items-center gap-1">✨ Intent match <span class="font-normal text-gray-500">· ${escapeHtml(ENGINE_LABELS[data.engine] || data.engine || 'unknown engine')}</span></span>
                             <span class="text-[10px] text-gray-500 font-normal italic">(click any pill to toggle on/off)</span>
                         </div>
                         <div class="text-gray-800">${escapeHtml(msg)}</div>
@@ -842,6 +866,9 @@
         }
 
         let CURRENT_SEARCH_INTENTS = [];
+
+        // Which engine answered /api/interpret (see api/interpret.js fallback chain).
+        const ENGINE_LABELS = { caisi: 'CaISI', gemini: 'Gemini', openai: 'OpenAI', heuristic: 'rule-based fallback' };
 
         // Global mapping from API facet names to dashboard feature keys
         const BINARY_FACET_MAPPING = {
@@ -953,25 +980,28 @@
                     FILTERS.lang = it.filter.values[0];
                 }
                 // 4. TEI Tag or Extracted Facet
-                else if (it.facet?.startsWith('tag_')) {
-                    const tagName = it.facet.replace('tag_', '');
+                else if (it.facet?.startsWith('tag_') || it.facet?.startsWith('tagValues.') || it.facet === 'tagValues' || it.statement?.toLowerCase().startsWith('tag:')) {
+                    let tagName = it.facet.replace('tag_', '').replace('tagValues.', '');
+                    if (it.statement && it.statement.includes('<')) {
+                        const tagMatch = it.statement.match(/<([^>]+)>/);
+                        if (tagMatch) tagName = tagMatch[1];
+                    }
+                    const val = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null);
                     FILTERS.tagValues = FILTERS.tagValues || [];
-                    FILTERS.tagValues.push({ tag: tagName });
+                    FILTERS.tagValues.push({ tag: tagName, value: val });
                 }
                 // 5. PersName / Person / Author
-                else if (it.facet === 'persName' || it.facet?.startsWith('persName') || it.statement?.toLowerCase().includes('person / author')) {
-                    const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1];
+                else if (it.facet === 'persName' || it.facet?.includes('persName') || it.statement?.toLowerCase().includes('person')) {
+                    const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || (it.statement.includes(':') ? it.statement.split(':')[1].trim() : null);
                     if (personVal) {
                         FILTERS.tagValues = FILTERS.tagValues || [];
                         FILTERS.tagValues.push({ tag: 'persName', value: personVal });
                     }
                 }
-                else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:')) {
-                    const signerVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1];
-                    if (signerVal) {
-                        FILTERS.tagValues = FILTERS.tagValues || [];
-                        FILTERS.tagValues.push({ tag: 'signed', value: signerVal });
-                    }
+                else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:') || it.statement?.toLowerCase().includes('signature')) {
+                    const signerVal = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null) || it.statement.match(/"([^"]+)"/)?.[1];
+                    FILTERS.tagValues = FILTERS.tagValues || [];
+                    FILTERS.tagValues.push({ tag: 'signed', value: signerVal || null });
                 }
                 // 6. Feature
                 else if (BINARY_FACET_MAPPING[it.facet] || it.facet?.startsWith('contains_') || it.facet?.startsWith('is_') || it.statement?.toLowerCase().includes('feature:')) {
@@ -979,11 +1009,20 @@
                     FILTERS.feature = { key: mappedKey, value: true };
                 }
                 // 7. Topic
-                else if (it.facet === 'topic' || it.statement?.toLowerCase().startsWith('topic:')) {
-                    const topicId = (it.filter?.values && it.filter.values[0]) || it.facet;
+                else if (it.facet === 'topic' || it.facet?.startsWith('T') || it.statement?.toLowerCase().includes('topic:')) {
+                    const topicId = (it.filter?.values && it.filter.values[0]) || (it.facet.startsWith('T') ? it.facet : null);
                     FILTERS.topicId = topicId;
                 }
             });
+
+            if (FILTERS.tagValues && FILTERS.tagValues.length > 0) {
+                const uniqueTags = new Map();
+                FILTERS.tagValues.forEach(tv => {
+                    const key = `${tv.tag}:${tv.value || '*'}`;
+                    if (!uniqueTags.has(key)) uniqueTags.set(key, tv);
+                });
+                FILTERS.tagValues = Array.from(uniqueTags.values());
+            }
 
             updateDashboard();
         }
@@ -1059,33 +1098,81 @@
 
             // 5. Raw TEI Tag Values & Extracted Facets
             EXTRACTED_FACETS = [];
+            const processedTagKeys = new Set();
+
+            const CANONICAL_TAGS = {
+                'persname': 'persName',
+                'placename': 'placeName',
+                'orgname': 'orgName',
+                'rolename': 'roleName',
+                'msdesc': 'msDesc',
+                'handdesc': 'handDesc',
+                'handshift': 'handShift',
+                'physdesc': 'physDesc',
+                'correspaction': 'correspAction',
+                'correspdesc': 'correspDesc',
+                'origdate': 'origDate',
+                'pubplace': 'pubPlace'
+            };
+
+            function addExtractedFacet(tagName, tagValue, customLabel = null, customDesc = null) {
+                if (!tagName) return;
+                const cleanTag = tagName.toLowerCase().trim();
+                const displayTag = CANONICAL_TAGS[cleanTag] || cleanTag;
+                const isGeneric = !tagValue || tagValue === 'true' || tagValue === true;
+                const normVal = isGeneric ? null : String(tagValue).trim();
+                const dedupeKey = isGeneric ? cleanTag : `${cleanTag}:${normVal.toLowerCase()}`;
+
+                if (processedTagKeys.has(dedupeKey)) return;
+                if (isGeneric && processedTagKeys.has(cleanTag)) return;
+
+                processedTagKeys.add(dedupeKey);
+                if (isGeneric) processedTagKeys.add(cleanTag);
+
+                let label = customLabel;
+                if (!label || label.startsWith('<')) {
+                    if (cleanTag === 'persname' || cleanTag === 'author') label = normVal ? `Person: ${normVal}` : `Person (<persName>)`;
+                    else if (cleanTag === 'signed') label = normVal ? `Signer: ${normVal}` : `Signature (<signed>)`;
+                    else if (cleanTag === 'salute') label = `Salutation (<salute>)`;
+                    else if (cleanTag === 'seal') label = `Wax Seal (<seal>)`;
+                    else if (cleanTag === 'stamp') label = `Postage / Stamp (<stamp>)`;
+                    else if (cleanTag === 'gloss') label = `Gloss / Definition (<gloss>)`;
+                    else if (cleanTag === 'foreign') label = `Foreign Words (<foreign>)`;
+                    else if (cleanTag === 'rubric') label = `Rubric (<rubric>)`;
+                    else if (cleanTag === 'app') label = `Critical Apparatus (<app>)`;
+                    else if (normVal) label = `<${displayTag}>: ${normVal}`;
+                    else label = `<${displayTag}>`;
+                }
+
+                EXTRACTED_FACETS.push({
+                    tag: displayTag,
+                    value: normVal,
+                    label: label,
+                    description: customDesc || `Filter matching TEI element <${displayTag}>${normVal ? ` with value "${normVal}"` : ''}`
+                });
+            }
+
+            if (Array.isArray(facets.tagValues) && facets.tagValues.length > 0) {
+                facets.tagValues.forEach(tv => {
+                    if (tv && tv.tag) addExtractedFacet(tv.tag, tv.value);
+                });
+            }
+
             if (Array.isArray(intents) && intents.length > 0) {
                 intents.forEach(it => {
-                    if (it.facet && it.facet.startsWith('tag_')) {
-                        const tagName = it.facet.replace('tag_', '');
-                        const cleanLabel = (it.statement || '').replace(/^✨\s*Newly\s*Extracted\s*Facet:\s*/i, '').replace(/\s*\(<.*?>\)$/, '').trim();
-                        EXTRACTED_FACETS.push({
-                            tag: tagName,
-                            value: null,
-                            label: cleanLabel || `<${tagName}>`,
-                            description: it.description || `Extracted from TEI element <${tagName}>`
-                        });
-                    } else if (it.facet === 'persName' || it.statement?.toLowerCase().includes('person / author')) {
-                        const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || 'Person';
-                        EXTRACTED_FACETS.push({
-                            tag: 'persName',
-                            value: personVal,
-                            label: `Person: ${personVal}`,
-                            description: `Filter by author or person "${personVal}" in TEI <persName>`
-                        });
-                    } else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:')) {
-                        const signerVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || 'Signer';
-                        EXTRACTED_FACETS.push({
-                            tag: 'signed',
-                            value: signerVal,
-                            label: `Signatory: ${signerVal}`,
-                            description: `Filter by signatory "${signerVal}" in TEI <signed>`
-                        });
+                    const statement = it.statement || '';
+                    let tagName = null;
+                    let tagVal = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null);
+
+                    if (it.facet?.startsWith('tag_')) tagName = it.facet.replace('tag_', '');
+                    else if (it.facet?.startsWith('tagValues.')) tagName = it.facet.replace('tagValues.', '');
+                    else if (statement.includes('<') && statement.includes('>')) {
+                        const m = statement.match(/<([^>]+)>/);
+                        if (m) tagName = m[1];
+                    }
+
+                    if (tagName) {
+                        addExtractedFacet(tagName, tagVal, statement, it.description);
                     }
                 });
             }
@@ -1324,7 +1411,17 @@
                 extractedGrid.className = "space-y-1 mb-2";
 
                 EXTRACTED_FACETS.forEach(ef => {
-                    const isActive = FILTERS.tagValues && FILTERS.tagValues.some(tv => tv.tag === ef.tag && (!ef.value || tv.value === ef.value));
+                    const efTagLower = String(ef.tag || '').toLowerCase();
+                    const efValLower = ef.value ? String(ef.value).toLowerCase() : null;
+
+                    const isActive = FILTERS.tagValues && FILTERS.tagValues.some(tv => {
+                        const tvTagLower = String(tv.tag || '').toLowerCase();
+                        const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                        if (tvTagLower !== efTagLower) return false;
+                        if (!efValLower) return true;
+                        return tvValLower === efValLower;
+                    });
+
                     const row = document.createElement('div');
                     row.className = "flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer transition-all "
                         + (isActive ? "bg-amber-50 border-amber-400 text-amber-900 shadow-xs font-semibold" : "bg-sky-50/40 border-sky-200 text-gray-700 hover:bg-sky-50");
@@ -1336,7 +1433,7 @@
                             <span class="truncate text-[11px]">${escapeHtml(ef.label)}</span>
                         </div>
                         <div class="flex items-center gap-1 shrink-0 ml-1">
-                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${isActive ? 'bg-amber-200 text-amber-900' : 'bg-gray-100 text-gray-500'}">${isActive ? 'ACTIVE' : 'OFF'}</span>
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${isActive ? 'bg-amber-200 text-amber-950 border-amber-300' : 'bg-gray-100 text-gray-500 border-gray-200'}">${isActive ? 'Active' : 'Inactive'}</span>
                             <span class="text-gray-400 hover:text-red-500 text-sm leading-none ml-1 cursor-pointer font-bold px-0.5" title="Remove Facet">&times;</span>
                         </div>
                     `;
@@ -1344,10 +1441,15 @@
                     row.querySelector('.hover\\:text-red-500').onclick = (e) => {
                         e.stopPropagation();
                         EXTRACTED_FACETS = EXTRACTED_FACETS.filter(item => item !== ef);
-                        FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => !(tv.tag === ef.tag && (!ef.value || tv.value === ef.value)));
+                        FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => {
+                            const tvTagLower = String(tv.tag || '').toLowerCase();
+                            const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                            return !(tvTagLower === efTagLower && (!efValLower || tvValLower === efValLower));
+                        });
                         if (CURRENT_SEARCH_INTENTS) {
                             CURRENT_SEARCH_INTENTS.forEach(it => {
-                                if (it.facet === ef.tag || it.facet === `tag_${ef.tag}` || (ef.tag === 'persName' && it.statement?.includes('Person / Author'))) {
+                                const itFacetLower = String(it.facet || '').toLowerCase();
+                                if (itFacetLower === efTagLower || itFacetLower === `tag_${efTagLower}` || (efTagLower === 'persname' && it.statement?.toLowerCase().includes('person'))) {
                                     it.active = false;
                                 }
                             });
@@ -1358,14 +1460,19 @@
 
                     row.onclick = () => {
                         if (isActive) {
-                            FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => !(tv.tag === ef.tag && (!ef.value || tv.value === ef.value)));
+                            FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => {
+                                const tvTagLower = String(tv.tag || '').toLowerCase();
+                                const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                                return !(tvTagLower === efTagLower && (!efValLower || tvValLower === efValLower));
+                            });
                         } else {
                             FILTERS.tagValues = FILTERS.tagValues || [];
                             FILTERS.tagValues.push(ef.value ? { tag: ef.tag, value: ef.value } : { tag: ef.tag });
                         }
                         if (CURRENT_SEARCH_INTENTS) {
                             CURRENT_SEARCH_INTENTS.forEach(it => {
-                                if (it.facet === ef.tag || it.facet === `tag_${ef.tag}` || (ef.tag === 'persName' && it.statement?.includes('Person / Author'))) {
+                                const itFacetLower = String(it.facet || '').toLowerCase();
+                                if (itFacetLower === efTagLower || itFacetLower === `tag_${efTagLower}` || (efTagLower === 'persname' && it.statement?.toLowerCase().includes('person'))) {
                                     it.active = !isActive;
                                 }
                             });
@@ -2028,10 +2135,25 @@
             renderSubsetModalContent();
         }
 
-        function drillDownToEditionDocs(editionName) {
+        let DRILLDOWN_DOCS_CACHE = {};
+
+        async function drillDownToEditionDocs(editionName) {
             SELECTED_EDITION_DRILLDOWN = editionName;
             CURRENT_SUBSET_TAB = 'docs';
             renderSubsetModalContent();
+            
+            // Fetch live documents for this edition from API
+            try {
+                const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim();
+                const res = await fetch(`/api/document?edition=${encodeURIComponent(editionName)}&search=${encodeURIComponent(searchVal)}&limit=300`);
+                if (res.ok) {
+                    const data = await res.json();
+                    DRILLDOWN_DOCS_CACHE[editionName] = data.documents || [];
+                    renderSubsetModalContent();
+                }
+            } catch (err) {
+                console.error('Error fetching edition documents:', err);
+            }
         }
 
         function clearEditionDrillDown() {
@@ -2039,7 +2161,19 @@
             renderSubsetModalContent();
         }
 
-        function filterSubsetItems() {
+        async function filterSubsetItems() {
+            if (CURRENT_SUBSET_TAB === 'docs' && SELECTED_EDITION_DRILLDOWN) {
+                const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim();
+                try {
+                    const res = await fetch(`/api/document?edition=${encodeURIComponent(SELECTED_EDITION_DRILLDOWN)}&search=${encodeURIComponent(searchVal)}&limit=300`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN] = data.documents || [];
+                    }
+                } catch (err) {
+                    console.error('Error searching edition documents:', err);
+                }
+            }
             renderSubsetModalContent();
         }
 
@@ -2122,23 +2256,32 @@
                 tabDoc.className = "px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
                 tabEd.className = "px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent";
 
-                let docs = (CURRENT_SUBSET_DATA.documents || []);
+                let docs = [];
                 
-                // If drilldown active, filter by edition
+                // If drilldown active, use cached edition docs or subset docs
                 if (SELECTED_EDITION_DRILLDOWN) {
-                    docs = docs.filter(d => d.edition_name === SELECTED_EDITION_DRILLDOWN);
+                    if (DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN]) {
+                        docs = DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN];
+                    } else {
+                        docs = (CURRENT_SUBSET_DATA.documents || []).filter(d => d.edition_name === SELECTED_EDITION_DRILLDOWN);
+                    }
+                } else {
+                    docs = (CURRENT_SUBSET_DATA.documents || []);
                 }
 
                 if (searchVal) {
                     docs = docs.filter(d => (d.name || '').toLowerCase().includes(searchVal) || (d.edition_name || '').toLowerCase().includes(searchVal) || String(d.id).includes(searchVal));
                 }
 
+                const edObj = (CURRENT_SUBSET_DATA.editions || []).find(e => e.name === SELECTED_EDITION_DRILLDOWN);
+                const totalEditionDocs = edObj ? edObj.count : docs.length;
+
                 const drilldownBanner = SELECTED_EDITION_DRILLDOWN ? `
                     <div class="mb-3 px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-xs">
                         <div class="flex items-center gap-2">
                             <span class="font-bold text-amber-950">Drilldown Filter:</span>
                             <span class="px-2 py-0.5 rounded bg-amber-200 text-amber-950 font-bold">${escapeHtml(SELECTED_EDITION_DRILLDOWN.replace(/_/g, ' '))}</span>
-                            <span class="text-gray-500">(${docs.length} matching sample documents)</span>
+                            <span class="text-gray-500">(${docs.length} documents loaded of ${totalEditionDocs.toLocaleString()} total)</span>
                         </div>
                         <button type="button" onclick="clearEditionDrillDown()" class="px-2 py-0.5 bg-white text-amber-900 hover:bg-amber-100 border border-amber-300 rounded font-semibold text-xs transition-colors cursor-pointer">
                             Show All Editions &times;
@@ -2149,14 +2292,17 @@
                 if (docs.length === 0) {
                     body.innerHTML = `
                         ${drilldownBanner}
-                        <div class="text-center py-12 text-gray-400 text-sm">No matching documents found.</div>
+                        <div class="text-center py-12 text-gray-400 text-sm">
+                            <svg class="animate-spin h-5 w-5 text-amber-500 inline mr-2" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span>Loading documents for ${escapeHtml(SELECTED_EDITION_DRILLDOWN || 'edition')}...</span>
+                        </div>
                     `;
-                    footerStats.textContent = `Showing 0 documents`;
+                    footerStats.textContent = `Loading documents...`;
                     return;
                 }
 
                 footerStats.textContent = SELECTED_EDITION_DRILLDOWN 
-                    ? `Showing ${docs.length.toLocaleString()} documents from ${SELECTED_EDITION_DRILLDOWN}`
+                    ? `Showing ${docs.length.toLocaleString()} documents from ${SELECTED_EDITION_DRILLDOWN} (Total in edition: ${totalEditionDocs.toLocaleString()})`
                     : `Displaying first ${docs.length.toLocaleString()} matching documents (from ${totalDocs.toLocaleString()} total docs)`;
 
                 body.innerHTML = `
@@ -2176,9 +2322,9 @@
                                     <tr onclick="openDocumentReader(${d.id})" class="hover:bg-amber-50/40 cursor-pointer transition-colors">
                                         <td class="px-4 py-2.5 font-mono text-gray-400">${d.id}</td>
                                         <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(d.name)}</td>
-                                        <td class="px-4 py-2.5 text-gray-600">
+                                        <td class="px-4 py-2 text-gray-600">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800">
-                                                ${escapeHtml(d.edition_name.replace(/_/g, ' '))}
+                                                ${escapeHtml((d.edition_name || SELECTED_EDITION_DRILLDOWN || '').replace(/_/g, ' '))}
                                             </span>
                                         </td>
                                         <td class="px-4 py-2.5 text-right">

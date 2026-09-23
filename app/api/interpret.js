@@ -11,7 +11,11 @@ function getOpenAI() {
   return openai;
 }
 
-const CAISI_URL = (process.env.CAISI_URL || 'http://localhost:8001').replace(/\/$/, '');
+// CaISI (metadata-curation-framework) is optional. It is only called when
+// CAISI_URL is set; server.js sets it to http://localhost:8001 for local runs.
+// Read lazily because server.js assigns env vars after this module loads.
+const getCaisiUrl = () => (process.env.CAISI_URL || '').replace(/\/$/, '') || null;
+const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
 /**
  * Fetch active property catalog from the database to inject into the LLM system prompt.
@@ -57,11 +61,23 @@ async function getDynamicProperties() {
 
 async function getTeiTagDefinitions() {
   try {
-    const { rows } = await getPool().query(
-      `SELECT name, category, description, example_queries FROM tei_tag_definitions ORDER BY category, name;`
-    );
+    const { rows } = await getPool().query(`
+      SELECT 
+        tg.name, 
+        COALESCE(td.category, 'Other TEI Elements') as category,
+        COALESCE(td.description, 'TEI XML element <' || tg.name || '>') as description,
+        td.example_queries
+      FROM tags tg
+      LEFT JOIN tei_tag_definitions td ON tg.name = td.name
+      ORDER BY 
+        CASE WHEN td.category IS NOT NULL THEN 0 ELSE 1 END,
+        td.category,
+        tg.name;
+    `);
     if (rows && rows.length > 0) return rows;
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error fetching TEI tag definitions:', err);
+  }
   return [];
 }
 
@@ -75,38 +91,98 @@ function buildCaisiSystemPrompt(properties, teiTags = []) {
     return `${p.name}${opts}`;
   });
 
-  const teiGuidelineList = teiTags.slice(0, 35).map(t => `<${t.name}> (${t.category}): ${t.description}`).join('\n   - ');
+  // Group all TEI tags by category
+  const categories = {};
+  for (const t of teiTags) {
+    const cat = t.category || 'General';
+    if (!categories[cat]) categories[cat] = [];
+    categories[cat].push(`<${t.name}>: ${t.description} (examples: ${t.example_queries || t.name})`);
+  }
+
+  const teiGuidelineList = Object.entries(categories).map(([cat, list]) => {
+    return `   [${cat}]:\n     - ` + list.join('\n     - ');
+  }).join('\n\n');
+
+  const topicsList = `
+   - T0: German Administrative
+   - T1: Board Meetings & Reports
+   - T2: Business & Company Correspondence
+   - T4: Middle High German Texts
+   - T10: Latin Chronicles & Inscriptions
+   - T12: English Economic Policy
+   - T13: Expedition Travel Journals
+   - T14: Education & Science
+   - T15: Parliamentary Debates
+   - T16: English Formal Letters
+   - T17: Insurance & Associations
+   - T23: German Colonial & Foreign Affairs
+   - T24: Art & Illustration
+   - T25: Latin Roman Monuments
+   - T28: Archaeology & Figures
+   - T29: Botany & Flora
+   - T31: Political Negotiations
+   - T32: Scientific Theory & Discussion
+   - T33: Spatial Planning Commission
+   - T34: Swiss Historical Records
+   - T37: Wilderness & Camping
+   - T38: US Foreign Policy & Military
+   - T42: Church Community Requests
+   - T43: French Botanical Gardens
+   - T44: French Personal Correspondence`;
 
   return `You are the CaISI (Metadata Curation Framework) Intent Elicitation and Query Resolution Engine for ORD Xplore.
 
-Your task is to analyze user queries over historical digital editions and metadata using both high-level facets and raw TEI XML tags.
+Your task is to analyze user queries over historical digital editions and metadata using high-level facets, 50 Topic clusters, and raw TEI XML elements.
 Perform three distinct steps:
 
 1. QUERY SCOPE CLASSIFICATION:
-   - "supported": The query expresses an exploratory search, filtering, comparison, or structuring need over the collection (e.g. "French letters around 1750", "find documents with verse", "editions from Germany").
-   - "unclear": The query is ambiguous, a single bare topic with no filtering criteria, or needs refinement (e.g. "history", "letters?").
+   - "supported": The query expresses an exploratory search, filtering, comparison, or structuring need over the collection (e.g. "French letters around 1750", "find documents with verse", "editions from Germany", "manuscripts with seal", "texts with glosses").
+   - "unclear": The query is ambiguous, a single bare word with no filtering criteria, or needs refinement.
    - "unsupported": The query is a general knowledge question or factoid QA not answerable by filtering metadata facets (e.g. "What is the capital of Switzerland?", "Who was Napoleon?").
 
 2. ATOMIC INTENT DECOMPOSITION:
-   - Break complex verbalizations into discrete atomic intent statements (e.g. "French letters from 1750 with verse" -> ["Language is French", "Time is 1750", "Document is letter", "Contains verse"]).
+   - Break complex verbalizations into discrete atomic intent statements (e.g. "French letters from 1750 with verse and seals" -> ["Language is French", "Time is 1750", "Document is letter", "Contains verse", "Contains seal"]).
 
-3. FACET, PROPERTY & RAW TEI TAG MAPPING:
+3. FACET, PROPERTY, TOPIC & RAW TEI TAG MAPPING:
    - Standard facets:
-     * "time": year(s) or year ranges (e.g. [1750, 1800] or [1750])
-     * "geography": city name or country (e.g. "Zurich", "Switzerland", "France", "Germany")
-     * "language": ISO code or language name ("fr", "en", "de", "la", "it")
-     * "topic": topic keywords
+     * "time": year(s) or year ranges (e.g. [1750, 1800] or [1750]). For historical eras: "Second World War" -> [1939, 1945], "First World War" -> [1914, 1918], "18th century" -> [1700, 1799], "19th century" -> [1800, 1899], "Renaissance" -> [1400, 1650], "Middle Ages" -> [500, 1500].
+     * "geography": city name or country (e.g. "Zurich", "Switzerland", "France", "Germany", "London", "Paris", "Berlin", "Vienna")
+     * "language": ISO code or language name ("fr", "en", "de", "la", "it", "es")
+     * "topicId": one of the 50 topic cluster IDs if query matches a domain topic: ${topicsList}
    - Dynamic binary properties: ${binaryProps.join(', ')}
    - Categorical / choice properties: ${choiceProps.join(', ')}
-   - Raw TEI XML Elements (based on TEI P5 Guidelines):
-   - ${teiGuidelineList || '<persName>, <placeName>, <date>, <lg>, <opener>, <signed>, <sp>, <said>, <licence>, <stamp>, <term>'}
+   - Complete TEI XML Guidelines Elements (TEI P5):
+${teiGuidelineList}
 
-SELECTION & MAPPING RULES:
+SELECTION & TEI TAG EXTRACTION RULES:
 - Do NOT guess unstated facets.
 - Adjectives like "French", "German", "Latin", "English" map to language unless an explicit place/country is stated.
-- "18th century" maps to time range [1700, 1799]. "19th century" -> [1800, 1899].
-- Binary properties take value "true" or "false".
-- If specific TEI tags or tag values are mentioned (e.g. signed by X, person X, place Y), emit them in tags/tagValues.
+- Binary properties take value "true" or "false" (e.g. is_letter: true, contains_verse: true, contains_diary: true, is_manuscript: true, contains_direct_speech: true, contains_theatre: true, contains_law_texts: true, contains_newspaper_articles: true, contains_inscriptions: true, contains_dictionary: true).
+- EXACT TEI P5 CANONICAL TAG CASING & ENTITY VALUES (tagValues):
+  * When a person or author is named: tagValues: [{ tag: "persName", value: "Vincent van Gogh" }]
+    -> Intent statement: 'Person / Author: "Vincent van Gogh" (<persName>)'
+    -> Intent facet: 'persName'
+    (Never use "author" as a tag name; authors are indexed under <persName>)
+  * When a specific organization or society is mentioned: tagValues: [{ tag: "orgName", value: "Royal Society" }]
+    -> Intent statement: 'Organization: "Royal Society" (<orgName>)'
+    -> Intent facet: 'orgName'
+  * When a specific term or concept is mentioned: tagValues: [{ tag: "term", value: "botany" }]
+  * When a document structure/palaeographical feature/linguistic markup is requested:
+    - signatures/signed: tagValues: [{ tag: "signed", value: "true" }] or specific signer name
+      -> Intent statement: 'Signatures & Sign-offs (<signed>)'
+      -> Intent facet: 'signed'
+    - salutations/greetings: tagValues: [{ tag: "salute", value: "true" }] -> Intent statement: 'Salutation (<salute>)'
+    - manuscript descriptions / codicology: tagValues: [{ tag: "msDesc", value: "true" }] -> Intent statement: 'Manuscript Description (<msDesc>)'
+    - seals or lead bullae: tagValues: [{ tag: "seal", value: "true" }] -> Intent statement: 'Wax Seal (<seal>)'
+    - stamps or postmarks: tagValues: [{ tag: "stamp", value: "true" }] -> Intent statement: 'Postage / Stamp (<stamp>)'
+    - glosses or definitions: tagValues: [{ tag: "gloss", value: "true" }] -> Intent statement: 'Gloss / Definition (<gloss>)'
+    - foreign language phrases: tagValues: [{ tag: "foreign", value: "true" }] -> Intent statement: 'Foreign Words (<foreign>)'
+    - rubric / red ink headings: tagValues: [{ tag: "rubric", value: "true" }] -> Intent statement: 'Rubric (<rubric>)'
+    - abbreviations: tagValues: [{ tag: "abbr", value: "true" }] -> Intent statement: 'Abbreviations (<abbr>)'
+    - critical apparatus variants: tagValues: [{ tag: "app", value: "true" }] -> Intent statement: 'Critical Apparatus (<app>)'
+    - licence / rights statements: tagValues: [{ tag: "licence", value: "true" }]
+    - verse lines or stanzas: tagValues: [{ tag: "lg", value: "true" }]
+    - speeches / dramatic roles: tagValues: [{ tag: "sp", value: "true" }]
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -114,24 +190,26 @@ OUTPUT FORMAT (JSON only, no markdown):
     "scope": {
       "decision": "supported" | "unclear" | "unsupported",
       "reason": "Clear explanation of the scope classification",
-      "message": "User-facing message explaining how the query was interpreted or how to rephrase if unclear/unsupported"
+      "message": "User-facing message explaining how the query was interpreted"
     },
     "intents": [
       {
-        "statement": "Atomic intent statement",
-        "facet": "facet_or_property_name",
-        "filter": { "op": "include" | "range" | "match", "values": ["value1"] }
+        "statement": "Atomic intent statement with TEI tag e.g. 'Person / Author: \"Darwin\" (<persName>)'",
+        "facet": "persName",
+        "filter": { "op": "match", "values": ["Darwin"] }
       }
     ],
     "facets": {
       "time": [{ "op": "include" | "range", "values": ["1750", "1800"] }],
       "geography": [{ "op": "include", "values": ["Zurich"] }],
       "language": [{ "op": "include", "values": ["fr"] }],
+      "topicId": "T29",
       "properties": [
         { "name": "is_letter", "value": true }
       ],
       "tagValues": [
-        { "tag": "signed", "value": "Cody" }
+        { "tag": "persName", "value": "Darwin" },
+        { "tag": "signed", "value": "true" }
       ]
     },
     "message": "Brief summary of applied filters"
@@ -475,12 +553,22 @@ function resolveHeuristicIntent(query, dynamicProperties) {
     }
   }
 
+  const nonPersonWords = new Set([
+    'the', 'a', 'an', 'french', 'german', 'latin', 'english', 'italian', 'spanish',
+    'historic', 'historical', 'medieval', 'ancient', 'early', 'late', 'modern',
+    'all', 'some', 'many', 'few', 'other', 'new', 'old', 'short', 'long',
+    'dramatic', 'theatrical', 'legal', 'political', 'botany', 'botanics', 'botanical',
+    'science', 'scientific', 'history', 'verse', 'poetry', 'letters', 'letter',
+    'signed', 'unsigned', 'sealed', 'unsealed', 'stamped', 'annotated',
+    'formal', 'official', 'private', 'personal', 'illustrated', 'printed', 'written', 'archival', 'administrative'
+  ]);
+
   // Preposition match (e.g. letters by X, author X, written by X)
   if (!detectedPerson) {
-    const personMatch = query.match(/(?:person|author|writer|written\s+by|authored\s+by|by)\s+([A-Za-z\s]+?)(?=\s+(?:in|from|at|around|between|with|dated|about)\b|$)/i);
+    const personMatch = query.match(/(?:person|author|writer|written\s+by|authored\s+by|by)\s+([A-Z][a-zA-Z\s]+?)(?=\s+(?:in|from|at|around|between|with|dated|about)\b|$)/);
     if (personMatch) {
       const p = personMatch[1].trim();
-      if (p && !['the', 'a', 'an', 'french', 'german', 'latin', 'english', 'verse', 'poetry', 'letters', 'dramatic', 'theatrical', 'legal', 'political', 'botany', 'botanics', 'science', 'history'].includes(p.toLowerCase())) {
+      if (p && !nonPersonWords.has(p.toLowerCase())) {
         detectedPerson = p;
       }
     }
@@ -488,10 +576,10 @@ function resolveHeuristicIntent(query, dynamicProperties) {
 
   // Noun-adjunct / possessive match (e.g. "Van Gogh letters", "Gray's poems")
   if (!detectedPerson) {
-    const adjunctMatch = query.match(/^([A-Z][a-zA-Z\s]+?)(?:'s)?\s+(?:letters?|poems?|diaries|manuscripts?|works?|texts?|writings?|correspondence)\b/i);
+    const adjunctMatch = query.match(/^([A-Z][a-zA-Z\s]+?)(?:'s)?\s+(?:letters?|poems?|diaries|manuscripts?|works?|texts?|writings?|correspondence)\b/);
     if (adjunctMatch) {
       const p = adjunctMatch[1].trim();
-      if (p && !['the', 'a', 'an', 'french', 'german', 'latin', 'english', 'historic', 'medieval', 'all', 'dramatic', 'theatrical', 'legal', 'political', 'ancient'].includes(p.toLowerCase())) {
+      if (p && !nonPersonWords.has(p.toLowerCase())) {
         detectedPerson = p;
       }
     }
@@ -538,28 +626,133 @@ export default async function handler(req, res) {
 
   const trimmedQuery = query.trim();
 
-  // Try calling CaISI service if running
-  try {
-    const caisiController = new AbortController();
-    const timeoutId = setTimeout(() => caisiController.abort(), 1200);
-
-    const caisiCheck = await fetch(`${CAISI_URL}/docs`, { signal: caisiController.signal });
-    clearTimeout(timeoutId);
-
-    if (caisiCheck.ok) {
-      // CaISI is reachable, use its workflow endpoint
+  // 1. CaISI service, only if configured. Any failure falls through to Gemini.
+  const CAISI_URL = getCaisiUrl();
+  if (CAISI_URL) {
+    try {
       const caisiRes = await fetch(`${CAISI_URL}/workflow/verbalization-to-intents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ verbalization: trimmedQuery })
+        body: JSON.stringify({ verbalization: trimmedQuery }),
+        signal: AbortSignal.timeout(8000),
       });
       if (caisiRes.ok) {
         const caisiData = await caisiRes.json();
+        if (caisiData && typeof caisiData === 'object') caisiData.engine = 'caisi';
         return res.status(200).json({ data: caisiData });
       }
+      console.warn(`CaISI returned HTTP ${caisiRes.status}, falling back`);
+    } catch (e) {
+      console.warn('CaISI unreachable, falling back:', e.message);
     }
-  } catch (e) {
-    // CaISI service not active on port 8001, fall back to internal engine
+  }
+
+  // Check if forced heuristic mode is requested
+  const engineMode = (process.env.ENGINE_MODE || req.body.mode || 'llm').toLowerCase();
+  if (engineMode === 'heuristic') {
+    const dynamicProperties = await getDynamicProperties();
+    const result = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
+    result.engine = 'heuristic';
+    return res.status(200).json({ data: result });
+  }
+
+  // Google Gemini LLM Intent Engine
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (GEMINI_API_KEY) {
+    try {
+      const dynamicProperties = await getDynamicProperties();
+      const teiTags = await getTeiTagDefinitions();
+      const systemPrompt = buildCaisiSystemPrompt(dynamicProperties, teiTags);
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL()}:generateContent?key=${GEMINI_API_KEY}`;
+      const geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Query: "${trimmedQuery}"` }] }
+          ],
+          generationConfig: { responseMimeType: 'application/json' }
+        })
+      });
+
+      if (geminiRes.ok) {
+        const geminiJson = await geminiRes.json();
+        const rawText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) {
+          const parsed = JSON.parse(rawText);
+          const data = parsed.data || parsed;
+          if (data && (data.scope || data.facets || data.intents)) {
+            data.facets = data.facets || {};
+            // Populate legacy binary facet format for dashboard UI compatibility
+            if (Array.isArray(data.facets.properties)) {
+              for (const prop of data.facets.properties) {
+                if (prop.name && prop.value !== undefined) {
+                  data.facets[prop.name] = [{ op: "include", values: [String(prop.value)] }];
+                }
+              }
+            }
+
+            const CANONICAL_TAG_MAP = {
+              'persname': 'persName',
+              'author': 'persName',
+              'placename': 'placeName',
+              'orgname': 'orgName',
+              'rolename': 'roleName',
+              'msdesc': 'msDesc',
+              'handdesc': 'handDesc',
+              'handshift': 'handShift',
+              'physdesc': 'physDesc',
+              'correspaction': 'correspAction',
+              'correspdesc': 'correspDesc',
+              'origdate': 'origDate',
+              'pubplace': 'pubPlace'
+            };
+
+            // Normalize tagValues
+            if (Array.isArray(data.facets.tagValues)) {
+              const uniqueTagValues = new Map();
+              data.facets.tagValues.forEach(tv => {
+                if (!tv || !tv.tag) return;
+                const tagLower = tv.tag.toLowerCase();
+                const canonicalTag = CANONICAL_TAG_MAP[tagLower] || tv.tag;
+                const isGeneric = !tv.value || tv.value === 'true' || tv.value === true;
+                const normVal = isGeneric ? 'true' : String(tv.value).trim();
+                const key = `${canonicalTag}:${normVal.toLowerCase()}`;
+                if (!uniqueTagValues.has(key)) {
+                  uniqueTagValues.set(key, { tag: canonicalTag, value: normVal });
+                }
+              });
+              data.facets.tagValues = Array.from(uniqueTagValues.values());
+            }
+
+            // Normalize intents
+            if (Array.isArray(data.intents)) {
+              data.intents.forEach(it => {
+                if (!it) return;
+                const facetLower = String(it.facet || '').toLowerCase();
+                if (CANONICAL_TAG_MAP[facetLower]) {
+                  it.facet = CANONICAL_TAG_MAP[facetLower];
+                }
+                if (it.facet === 'persName' && it.statement && !it.statement.includes('<persName>')) {
+                  const val = (it.filter?.values && it.filter.values[0]) || (it.statement.match(/"([^"]+)"/)?.[1]) || (it.statement.match(/(?:is|named|author)\s+([A-Za-z\s]+)/i)?.[1]) || '';
+                  it.statement = `Person / Author: "${val.trim()}" (<persName>)`;
+                } else if (it.facet === 'signed' && it.statement && !it.statement.includes('<signed>')) {
+                  it.statement = `Signatures & Sign-offs (<signed>)`;
+                }
+              });
+            }
+
+            data.engine = 'gemini';
+            return res.status(200).json({ data });
+          }
+        }
+      } else {
+        console.warn(`Gemini returned HTTP ${geminiRes.status}, falling back`);
+      }
+    } catch (gErr) {
+      console.warn('Gemini LLM call failed, falling back:', gErr.message);
+    }
   }
 
   // Standalone MCF Intent Engine using OpenAI
@@ -568,6 +761,7 @@ export default async function handler(req, res) {
 
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('dummy')) {
       const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
+      fallbackResult.engine = 'heuristic';
       return res.status(200).json({ data: fallbackResult });
     }
 
@@ -587,6 +781,7 @@ export default async function handler(req, res) {
 
     if (!result || !result.data) {
       const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
+      fallbackResult.engine = 'heuristic';
       return res.status(200).json({ data: fallbackResult });
     }
 
@@ -603,11 +798,13 @@ export default async function handler(req, res) {
       }
     }
 
+    data.engine = 'openai';
     res.status(200).json(result);
   } catch (error) {
-    console.warn('OpenAI call failed, using heuristic intent resolver:', error.message);
+    console.warn('LLM call failed, using heuristic intent resolver:', error.message);
     const dynamicProperties = await getDynamicProperties();
     const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
+    fallbackResult.engine = 'heuristic';
     res.status(200).json({ data: fallbackResult });
   }
 }

@@ -1,10 +1,4 @@
-import pg from 'pg';
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL || 'postgresql://karina@localhost:5432/ord_xplore',
-});
+import { getPool, ensureSchema } from './_db.js';
 
 // Helper for CORS headers
 function applyCors(req, res, methods = 'GET,POST,OPTIONS') {
@@ -25,15 +19,12 @@ function applyCors(req, res, methods = 'GET,POST,OPTIONS') {
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  const client = await pool.connect();
-
-  // Self-healing database migration for soft-exclusion columns
   try {
-    await client.query('ALTER TABLE editions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
-    await client.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+    await ensureSchema(); // adds the is_excluded columns if missing
   } catch (e) {
-    console.warn('Auto-migration database check warning in manage.js:', e.message);
+    return res.status(500).json({ error: `Database unavailable: ${e.message}` });
   }
+  const client = await getPool().connect();
 
   try {
     // --- GET METHOD: Retrieve list of editions or documents ---

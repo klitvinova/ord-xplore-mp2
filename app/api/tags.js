@@ -1,4 +1,4 @@
-import { getPool, applyCors } from './_db.js';
+import { getPool, applyCors, ensureSchema } from './_db.js';
 
 /**
  * GET /api/tags?search=<substring>&limit=<n>
@@ -28,15 +28,19 @@ export default async function handler(req, res) {
     }
     params.push(limit);
 
+    // tei_tag_definitions (migration 006) is optional: without it every tag
+    // just gets the generic category/description.
+    const schema = await ensureSchema();
+    const hasDefs = schema.has('tei_tag_definitions');
     const { rows } = await getPool().query(
       `SELECT t.name, COUNT(dt.document_id)::int AS doc_count,
-              COALESCE(def.category, 'General Element') AS category,
-              COALESCE(def.description, 'Standard TEI XML document element.') AS description
+              ${hasDefs ? "COALESCE(def.category, 'General Element')" : "'General Element'"} AS category,
+              ${hasDefs ? "COALESCE(def.description, 'Standard TEI XML document element.')" : "'Standard TEI XML document element.'"} AS description
          FROM tags t
          LEFT JOIN document_tags dt ON dt.tag_id = t.id
-         LEFT JOIN tei_tag_definitions def ON def.name = t.name
-         ${where}
-        GROUP BY t.name, def.category, def.description
+         ${hasDefs ? 'LEFT JOIN tei_tag_definitions def ON def.name = t.name' : ''}
+        ${where}
+        GROUP BY t.name${hasDefs ? ', def.category, def.description' : ''}
         ORDER BY doc_count DESC, t.name ASC
         LIMIT $${params.length};`,
       params

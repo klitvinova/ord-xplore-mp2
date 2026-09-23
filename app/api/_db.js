@@ -20,6 +20,58 @@ export function getPool() {
   return pool;
 }
 
+/**
+ * Tables added by later migrations (db/001, 003, 006). Production databases
+ * loaded from an older dump may not have them yet, so queries that touch
+ * them must check first instead of failing the whole request.
+ */
+export const OPTIONAL_TABLES = {
+  tags: 'db/001_add_tags.sql + db/backfill_tags.py',
+  document_tags: 'db/001_add_tags.sql + db/backfill_tags.py',
+  properties: 'db/003_add_properties_and_values.sql + db/004_backfill_properties.py',
+  edition_property_values: 'db/003_add_properties_and_values.sql + db/004_backfill_properties.py',
+  document_property_values: 'db/003_add_properties_and_values.sql + db/005_extract_document_properties.py',
+  tei_tag_definitions: 'db/006_add_tei_guidelines_and_doc_tag_values.sql + db/007_populate_tei_guidelines_and_tag_values.py',
+  document_tag_values: 'db/006_add_tei_guidelines_and_doc_tag_values.sql + db/007_populate_tei_guidelines_and_tag_values.py',
+};
+
+let schemaPromise;
+
+/**
+ * Run once per function instance: make sure the soft-exclusion columns exist
+ * and record which optional tables are present. Returns
+ * { has(name), missing: [{ table, migration }] }.
+ */
+export function ensureSchema() {
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      const db = getPool();
+      try {
+        await db.query('ALTER TABLE editions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+        await db.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
+      } catch (e) {
+        console.warn('is_excluded column check failed:', e.message);
+      }
+      const { rows } = await db.query(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema = current_schema() AND table_name = ANY($1::text[]);`,
+        [Object.keys(OPTIONAL_TABLES)]
+      );
+      const present = new Set(rows.map((r) => r.table_name));
+      return {
+        has: (name) => present.has(name),
+        missing: Object.keys(OPTIONAL_TABLES)
+          .filter((t) => !present.has(t))
+          .map((t) => ({ table: t, migration: OPTIONAL_TABLES[t] })),
+      };
+    })().catch((err) => {
+      schemaPromise = undefined; // retry on the next request
+      throw err;
+    });
+  }
+  return schemaPromise;
+}
+
 /** Standard CORS + preflight handling. Returns true if the request is done. */
 export function applyCors(req, res, methods = 'GET,POST,OPTIONS') {
   res.setHeader('Access-Control-Allow-Credentials', true);

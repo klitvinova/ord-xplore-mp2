@@ -6,6 +6,16 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load KEY=value pairs from .env (repo root or app/) for local runs. Vercel
+// injects env vars itself, and existing variables are never overwritten.
+for (const envPath of [path.join(__dirname, '..', '.env'), path.join(__dirname, '.env')]) {
+  if (!fs.existsSync(envPath)) continue;
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+}
+
 // Import API handlers
 import dashboardHandler from './api/dashboard.js';
 import uploadHandler from './api/upload.js';
@@ -15,6 +25,7 @@ import analyzeHandler from './api/analyze.js';
 import manageHandler from './api/manage.js';
 import propertiesHandler from './api/properties.js';
 import documentHandler from './api/document.js';
+import infoHandler from './api/info.js';
 
 // Mock request body parser
 async function parseBody(req) {
@@ -74,6 +85,7 @@ const server = http.createServer(async (req, res) => {
      '/api/manage': manageHandler,
      '/api/properties': propertiesHandler,
      '/api/document': documentHandler,
+     '/api/info': infoHandler,
   };
 
   const apiHandler = API_ROUTES[pathname];
@@ -118,9 +130,28 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-const PORT = 3000;
+// Parse CLI arguments & Environment variables
+const args = process.argv.slice(2);
+let portVal = process.env.PORT || 3000;
+let modeVal = process.env.ENGINE_MODE || 'llm';
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i].startsWith('--port=')) portVal = args[i].split('=')[1];
+  else if (args[i] === '--port' && args[i + 1]) portVal = args[++i];
+  else if (args[i].startsWith('--mode=')) modeVal = args[i].split('=')[1];
+  else if (args[i] === '--mode' && args[i + 1]) modeVal = args[++i];
+}
+
+const PORT = parseInt(portVal, 10);
+const ENGINE_MODE = modeVal.toLowerCase();
+process.env.PORT = String(PORT);
+process.env.ENGINE_MODE = ENGINE_MODE;
+// Locally, try the CaISI service on its default port (metadata-curation-framework).
+process.env.CAISI_URL = process.env.CAISI_URL || 'http://localhost:8001';
+
 server.listen(PORT, () => {
-  console.log(`\n🚀 IVDA Dynamic SQL Dashboard local server running at:`);
-  console.log(`   👉 http://localhost:${PORT}/`);
+  const modeLabel = ENGINE_MODE === 'llm' ? '✨ CaISI LLM Engine (Google Gemini 3.6 Flash)' : '⚙️ Local Heuristic Engine (Rules & Regex)';
+  console.log(`\n🚀 Digital Editions Explorer server running in [${ENGINE_MODE.toUpperCase()}] mode:`);
+  console.log(`   👉 http://localhost:${PORT}/ (${modeLabel})`);
   console.log(`   👉 http://localhost:${PORT}/upload.html (Document Ingestion Page)\n`);
 });

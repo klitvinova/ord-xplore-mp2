@@ -1,18 +1,50 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getPool } from './_db.js';
+import { getPool, ensureSchema } from './_db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const RAW_DOCS_ROOT = path.resolve(__dirname, '../../../raw_documents');
 
 export default async function handler(req, res) {
-  const docId = req.query.id;
   const pool = getPool();
 
+  // If edition parameter is present, list documents for that edition
+  if (req.query.edition) {
+    try {
+      const editionSlug = req.query.edition;
+      const search = req.query.search ? `%${req.query.search.trim()}%` : null;
+      const limit = parseInt(req.query.limit || 250, 10);
+
+      let q = `
+        SELECT d.id, d.name, e.name as edition_name
+        FROM documents d
+        JOIN editions e ON d.edition_id = e.id
+        WHERE e.name = $1
+      `;
+      const params = [editionSlug];
+      if (search) {
+        q += ` AND (d.name ILIKE $2 OR CAST(d.id AS TEXT) ILIKE $2)`;
+        params.push(search);
+      }
+      q += ` ORDER BY d.id LIMIT $${params.length + 1}`;
+      params.push(limit);
+
+      const listRes = await pool.query(q, params);
+      return res.status(200).json({
+        edition: editionSlug,
+        documents: listRes.rows
+      });
+    } catch (err) {
+      console.error('Error listing edition documents:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  const docId = req.query.id;
   if (!docId) {
-    return res.status(400).json({ error: 'Missing required query parameter "id"' });
+    return res.status(400).json({ error: 'Missing required query parameter "id" or "edition"' });
   }
 
   try {
@@ -50,7 +82,12 @@ export default async function handler(req, res) {
       ORDER BY count DESC
       LIMIT 50;
     `;
-    const tagsRes = await pool.query(tagsQuery, [docId]);
+    // document_tag_values comes from migration 006; older databases lack it.
+    let tagValueRows = [];
+    const schema = await ensureSchema();
+    if (schema.has('document_tag_values')) {
+      tagValueRows = (await pool.query(tagsQuery, [docId])).rows;
+    }
 
     // Fetch dates and places
     const metaQuery = `
@@ -85,7 +122,7 @@ export default async function handler(req, res) {
       places: metadata.places || [],
       languages: metadata.languages || [],
       topics: metadata.topics || [],
-      tagValues: tagsRes.rows
+      tagValues: tagValueRows
     });
 
   } catch (err) {

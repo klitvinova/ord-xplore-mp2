@@ -1,19 +1,18 @@
-import { getPool, applyCors, CUSTOM_PREFIX, parseCustomFilters } from './_db.js';
+import { getPool, applyCors, ensureSchema, CUSTOM_PREFIX, parseCustomFilters } from './_db.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET,POST,OPTIONS')) return;
 
   const dbPool = getPool();
 
-  // Self-healing database migration for soft-exclusion columns
   try {
-    await dbPool.query('ALTER TABLE editions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
-    await dbPool.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;');
-  } catch (e) {
-    console.warn('Auto-migration database check warning:', e.message);
-  }
+    // Adds is_excluded columns once and records which optional tables exist.
+    const schema = await ensureSchema();
+    const hasPropertyValues = schema.has('edition_property_values') && schema.has('properties');
+    const hasTagValues = schema.has('document_tag_values');
+    // Filters we had to skip because their tables are not migrated yet.
+    const warnings = [];
 
-  try {
     if (req.method === 'GET') {
       // Initial Load metadata dictionaries
       const editionsRes = await dbPool.query('SELECT name, description, website, number_documents, size_in_mb FROM editions ORDER BY name;');
@@ -167,7 +166,7 @@ export default async function handler(req, res) {
           )`;
         } else if (key === 'contains_diary') {
           tagFallbackClause = `OR ${existOperator} (
-            SELECT 1 FROM editions ed WHERE ed.id = d.edition_id AND (ed.name ILIKE '%diar%' OR ed.name ILIKE '%tageb%')
+            SELECT 1 FROM editions ed WHERE ed.id = d.edition_id AND (ed.name ILIKE '%diar%' OR ed.name ILIKE '%tageb%' OR ed.name ILIKE '%journal%' OR ed.name ILIKE '%expedition%' OR ed.name ILIKE '%reise%')
           )
           OR ${existOperator} (
             SELECT 1 FROM document_tags dt JOIN tags tg ON dt.tag_id = tg.id WHERE dt.document_id = d.id AND tg.name IN ('entry')
@@ -187,7 +186,7 @@ export default async function handler(req, res) {
             JOIN attributes_metadata am ON da.attribute_id = am.id
             WHERE da.document_id = d.id AND am.name = $${paramIndex}
           )
-          OR ${existOperator} (
+          ${hasPropertyValues ? `OR ${existOperator} (
             SELECT 1 FROM edition_property_values epv
             JOIN properties p ON epv.property_id = p.id
             WHERE epv.edition_id = d.edition_id AND p.name = $${paramIndex}
@@ -195,7 +194,7 @@ export default async function handler(req, res) {
                 (p.type = 'binary' AND (epv.value = 'true'::jsonb OR epv.value = '"true"'::jsonb))
                 OR (p.type = 'multiple_choice' AND (epv.value ? $${paramIndex + 1} OR epv.value @> jsonb_build_array($${paramIndex + 1})))
               )
-          )
+          )` : `OR ($${paramIndex + 1}::text IS NULL AND FALSE)`}
           ${tagFallbackClause}
         )`);
         params.push(key, typeof value === 'string' ? value : key);
@@ -204,7 +203,9 @@ export default async function handler(req, res) {
     }
 
     // Dynamic properties array filter (e.g. from MCF intent search or dynamic facets)
-    if (Array.isArray(filters.properties) && filters.properties.length > 0) {
+    if (Array.isArray(filters.properties) && filters.properties.length > 0 && !hasPropertyValues) {
+      warnings.push('Property filters were ignored: the properties tables are not migrated on this database.');
+    } else if (Array.isArray(filters.properties) && filters.properties.length > 0) {
       for (const propFilter of filters.properties) {
         if (!propFilter || !propFilter.name) continue;
         const { name, value } = propFilter;
@@ -248,20 +249,27 @@ export default async function handler(req, res) {
       for (const tv of filters.tagValues) {
         if (!tv || !tv.tag) continue;
         const { tag, value } = tv;
-        if (value) {
-          const cleanSlug = `%${value.toLowerCase().replace(/[^a-z0-9]/g, '%')}%`;
+        const isGeneric = !value || value === 'true' || value === true;
+        
+        if (!isGeneric) {
+          const cleanSlug = `%${String(value).toLowerCase().replace(/[^a-z0-9]/g, '%')}%`;
+          let extraTagNames = [tag];
+          if (tag === 'persName') extraTagNames = ['persName', 'author', 'speaker', 'signed'];
+          else if (tag === 'term' || tag === 'topic' || tag === 'genre') extraTagNames = ['term', 'gloss', 'head', 'title', 'name', 'rs'];
+          else if (tag === 'head' || tag === 'title') extraTagNames = ['head', 'title', 'bibl', 'term'];
+
+          if (!hasTagValues) {
+            warnings.push(`Only document and edition names were searched for "${value}": document_tag_values is not migrated on this database.`);
+          }
           clauses.push(`(
-            EXISTS (
+            ${hasTagValues ? `EXISTS (
               SELECT 1 FROM document_tag_values dtv
               WHERE dtv.document_id = d.id 
-                AND (
-                  dtv.tag_name = $${paramIndex}
-                  OR ($${paramIndex} = 'persName' AND dtv.tag_name IN ('persName', 'author', 'speaker', 'signed'))
-                )
-                AND dtv.value ILIKE $${paramIndex + 1}
-            )
+                AND dtv.tag_name = ANY($${paramIndex}::text[])
+                AND (dtv.value ILIKE $${paramIndex + 1} OR dtv.value ILIKE $${paramIndex + 2})
+            )` : `($${paramIndex}::text[] IS NULL AND FALSE)`}
             OR (
-              $${paramIndex} = 'persName' AND (
+              $${paramIndex + 3} IN ('persName', 'term', 'head', 'title', 'bibl') AND (
                 d.name ILIKE $${paramIndex + 1}
                 OR EXISTS (
                   SELECT 1 FROM editions ed
@@ -270,9 +278,10 @@ export default async function handler(req, res) {
               )
             )
           )`);
-          params.push(tag, `%${value}%`, cleanSlug);
-          paramIndex += 3;
+          params.push(extraTagNames, `%${value}%`, cleanSlug, tag);
+          paramIndex += 4;
         } else {
+          // Pure structural TEI tag presence
           clauses.push(`EXISTS (
             SELECT 1 FROM document_tags dt
             JOIN tags tg ON dt.tag_id = tg.id
@@ -472,7 +481,8 @@ export default async function handler(req, res) {
         topics: topicsMap,
         editions: editionsList,
         editionDetails,
-        documents: docSampleRes.rows
+        documents: docSampleRes.rows,
+        warnings,
       });
 
     } catch (err) {
