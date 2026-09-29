@@ -14,6 +14,8 @@ function getOpenAI() {
 // CaISI (metadata-curation-framework) is optional. It is only called when
 // CAISI_URL is set; server.js sets it to http://localhost:8001 for local runs.
 // Read lazily because server.js assigns env vars after this module loads.
+// The topic facet is hidden until the topic model is rebuilt (FIX_PLAN.md, T1).
+const TOPICS_ENABLED = process.env.TOPICS_ENABLED === 'true';
 const getCaisiUrl = () => (process.env.CAISI_URL || '').replace(/\/$/, '') || null;
 const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
@@ -146,9 +148,13 @@ Perform three distinct steps:
 3. FACET, PROPERTY, TOPIC & RAW TEI TAG MAPPING:
    - Standard facets:
      * "time": year(s) or year ranges (e.g. [1750, 1800] or [1750]). For historical eras: "Second World War" -> [1939, 1945], "First World War" -> [1914, 1918], "18th century" -> [1700, 1799], "19th century" -> [1800, 1899], "Renaissance" -> [1400, 1650], "Middle Ages" -> [500, 1500].
-     * "geography": city name or country (e.g. "Zurich", "Switzerland", "France", "Germany", "London", "Paris", "Berlin", "Vienna")
+     * "geography": city name or country (e.g. "Zurich", "Switzerland", "France", "Germany", "London", "Paris", "Berlin", "Vienna"), plus a "source" saying which place layer is meant:
+         - "creation": where the document was written or sent from ("letters from France", "written in Paris", "sent from Vienna")
+         - "publication": where it was printed or published ("published in London", "printed in Leipzig")
+         - "contextual": places the text is about or mentions ("letters about France", "mentioning Zurich", "documents on Egypt")
+         If the query does not make it clear, use "contextual".
      * "language": ISO code or language name ("fr", "en", "de", "la", "it", "es")
-     * "topicId": one of the 50 topic cluster IDs if query matches a domain topic: ${topicsList}
+${TOPICS_ENABLED ? `     * "topicId": one of the 50 topic cluster IDs if query matches a domain topic: ${topicsList}` : '     * (topics are disabled: never output a topicId)'}
    - Dynamic binary properties: ${binaryProps.join(', ')}
    - Categorical / choice properties: ${choiceProps.join(', ')}
    - Complete TEI XML Guidelines Elements (TEI P5):
@@ -201,7 +207,7 @@ OUTPUT FORMAT (JSON only, no markdown):
     ],
     "facets": {
       "time": [{ "op": "include" | "range", "values": ["1750", "1800"] }],
-      "geography": [{ "op": "include", "values": ["Zurich"] }],
+      "geography": [{ "op": "include", "values": ["Zurich"], "source": "creation" | "publication" | "contextual" }],
       "language": [{ "op": "include", "values": ["fr"] }],
       "topicId": "T29",
       "properties": [
@@ -359,9 +365,14 @@ function resolveHeuristicIntent(query, dynamicProperties) {
   }
 
   if (detectedGeo) {
-    facets.geography = [{ op: 'include', values: [detectedGeo] }];
+    // Which place layer: "from/written in/sent from X" -> creation,
+    // "published/printed in X" -> publication, otherwise places mentioned.
+    const geoSource = /\b(?:published|printed)\s+(?:in|at)\b/i.test(query) ? 'publication'
+      : /\b(?:from|written\s+in|sent\s+from|composed\s+in)\b/i.test(query) ? 'creation'
+      : 'contextual';
+    facets.geography = [{ op: 'include', values: [detectedGeo], source: geoSource }];
     facets.country = detectedGeo;
-    intents.push({ statement: `Location: ${detectedGeo} (<placeName>)`, facet: 'geography', filter: facets.geography[0] });
+    intents.push({ statement: `Geography: ${detectedGeo}`, facet: 'geography', filter: facets.geography[0] });
   }
 
   // Topic Detection across 50 Clusters
@@ -611,6 +622,25 @@ function resolveHeuristicIntent(query, dynamicProperties) {
   };
 }
 
+const GEO_SOURCES = ['creation', 'publication', 'contextual'];
+
+/**
+ * Make sure every geography facet says which place layer it targets and that
+ * the matching intent pill carries the same value, so the dashboard can switch
+ * its map layer to what the query meant ("from France" -> creation).
+ */
+function normalizeGeoSource(data) {
+  const geo = data?.facets?.geography?.[0];
+  if (!geo) return data;
+  if (!GEO_SOURCES.includes(geo.source)) geo.source = 'contextual';
+  for (const it of data.intents || []) {
+    if (it && it.facet === 'geography') {
+      it.filter = { ...(it.filter || {}), values: it.filter?.values || geo.values, source: geo.source };
+    }
+  }
+  return data;
+}
+
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET,OPTIONS,POST')) return;
 
@@ -638,7 +668,7 @@ export default async function handler(req, res) {
       });
       if (caisiRes.ok) {
         const caisiData = await caisiRes.json();
-        if (caisiData && typeof caisiData === 'object') caisiData.engine = 'caisi';
+        if (caisiData && typeof caisiData === 'object') { caisiData.engine = 'caisi'; normalizeGeoSource(caisiData); }
         return res.status(200).json({ data: caisiData });
       }
       console.warn(`CaISI returned HTTP ${caisiRes.status}, falling back`);
@@ -744,6 +774,7 @@ export default async function handler(req, res) {
             }
 
             data.engine = 'gemini';
+            normalizeGeoSource(data);
             return res.status(200).json({ data });
           }
         }
@@ -799,6 +830,7 @@ export default async function handler(req, res) {
     }
 
     data.engine = 'openai';
+    normalizeGeoSource(data);
     res.status(200).json(result);
   } catch (error) {
     console.warn('LLM call failed, using heuristic intent resolver:', error.message);

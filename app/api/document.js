@@ -75,7 +75,7 @@ export default async function handler(req, res) {
 
     // Fetch tags & entities for this document
     const tagsQuery = `
-      SELECT dtv.tag_name, dtv.value, count(*) as count
+      SELECT dtv.tag_name, dtv.value, SUM(dtv.occurrences)::int as count
       FROM document_tag_values dtv
       WHERE dtv.document_id = $1
       GROUP BY dtv.tag_name, dtv.value
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
     // Fetch dates and places
     const metaQuery = `
       SELECT 
-        (SELECT json_agg(json_build_object('year', te.year, 'date_type', dte.date_type)) 
+        (SELECT json_agg(json_build_object('year', CASE WHEN te.era = 'BC' THEN -te.year ELSE te.year END, 'date_type', dte.date_type)) 
          FROM document_time_entities dte 
          JOIN time_entities te ON dte.time_entity_id = te.id 
          WHERE dte.document_id = $1) as dates,
@@ -122,7 +122,8 @@ export default async function handler(req, res) {
       places: metadata.places || [],
       languages: metadata.languages || [],
       topics: metadata.topics || [],
-      tagValues: tagValueRows
+      tagValues: tagValueRows,
+      tagValuesAvailable: schema.has('document_tag_values')
     });
 
   } catch (err) {

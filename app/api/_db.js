@@ -58,8 +58,18 @@ export function ensureSchema() {
         [Object.keys(OPTIONAL_TABLES)]
       );
       const present = new Set(rows.map((r) => r.table_name));
+      // Optional columns, e.g. geolocations.place_type from
+      // data/geo_audit/correct_geolocations.py.
+      const cols = await db.query(
+        `SELECT table_name || '.' || column_name AS col FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND ((table_name = 'geolocations' AND column_name IN ('place_type', 'geo_correction'))
+              OR (table_name = 'editions' AND column_name IN ('display_name', 'edition_date_year')));`
+      );
+      const columns = new Set(cols.rows.map((r) => r.col));
       return {
         has: (name) => present.has(name),
+        hasColumn: (table, column) => columns.has(`${table}.${column}`),
         missing: Object.keys(OPTIONAL_TABLES)
           .filter((t) => !present.has(t))
           .map((t) => ({ table: t, migration: OPTIONAL_TABLES[t] })),
@@ -88,6 +98,17 @@ export function applyCors(req, res, methods = 'GET,POST,OPTIONS') {
   }
   return false;
 }
+
+/**
+ * time_entities stores BC years as a positive year plus era = 'BC'. Always
+ * read years through this expression so BC dates come out negative.
+ */
+export const SIGNED_YEAR = (alias = 't') =>
+  `(CASE WHEN ${alias}.era = 'BC' THEN -${alias}.year ELSE ${alias}.year END)`;
+
+// attributes_metadata rows that are facet names, not characteristics.
+export const PSEUDO_ATTRIBUTES = ['date_creation', 'date_publication', 'date_contextual',
+  'geo_creation', 'geo_publication', 'geo_contextual', 'language'];
 
 export const CUSTOM_PREFIX = '__custom__';
 

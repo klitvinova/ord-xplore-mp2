@@ -1,4 +1,4 @@
-import { getPool, applyCors, ensureSchema, CUSTOM_PREFIX, parseCustomFilters } from './_db.js';
+import { getPool, applyCors, ensureSchema, CUSTOM_PREFIX, parseCustomFilters, SIGNED_YEAR, PSEUDO_ATTRIBUTES } from './_db.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET,POST,OPTIONS')) return;
@@ -10,15 +10,25 @@ export default async function handler(req, res) {
     const schema = await ensureSchema();
     const hasPropertyValues = schema.has('edition_property_values') && schema.has('properties');
     const hasTagValues = schema.has('document_tag_values');
+    // Countries, regions, water bodies and fragments are not settlements: keep
+    // them out of the Places list and the map (they can still match filters).
+    const settlementsOnly = schema.hasColumn('geolocations', 'place_type')
+      ? "AND (g.place_type IS NULL OR g.place_type = 'settlement')" : '';
     // Filters we had to skip because their tables are not migrated yet.
     const warnings = [];
 
     if (req.method === 'GET') {
       // Initial Load metadata dictionaries
-      const editionsRes = await dbPool.query('SELECT name, description, website, number_documents, size_in_mb FROM editions ORDER BY name;');
+      // Excluded (e.g. test) editions stay out of every list.
+      const displayName = schema.hasColumn('editions', 'display_name') ? 'display_name' : 'NULL AS display_name';
+      const editionsRes = await dbPool.query(
+        `SELECT name, ${displayName}, description, website, number_documents, size_in_mb
+           FROM editions WHERE is_excluded = FALSE ORDER BY name;`);
       const languagesRes = await dbPool.query('SELECT name, iso_code FROM languages ORDER BY name;');
       const topicsRes = await dbPool.query('SELECT id, name, words FROM topics ORDER BY id;');
-      const featuresRes = await dbPool.query('SELECT name, type FROM attributes_metadata ORDER BY name;');
+      const featuresRes = await dbPool.query(
+        'SELECT name, type FROM attributes_metadata WHERE NOT (name = ANY($1::text[])) ORDER BY name;',
+        [PSEUDO_ATTRIBUTES]);
 
       let propertiesRows = [];
       try {
@@ -82,20 +92,26 @@ export default async function handler(req, res) {
         SELECT 1 FROM document_time_entities dt
         JOIN time_entities t ON dt.time_entity_id = t.id
         WHERE dt.document_id = d.id
-          AND (dt.date_type = $${paramIndex} OR dt.date_type IN ('creation', 'contextual'))
-          AND t.year >= $${paramIndex + 1} AND t.year <= $${paramIndex + 2}
+          AND dt.date_type = $${paramIndex}
+          AND ${SIGNED_YEAR('t')} BETWEEN $${paramIndex + 1} AND $${paramIndex + 2}
       )`);
       params.push(dateSource, filters.yearRange[0], filters.yearRange[1]);
       paramIndex += 3;
     }
 
+    // Geography filters use the same place layer the map shows (geoSource:
+    // creation / publication / contextual), so matching and display agree.
+    // geoMatchPatterns is reused below to flag which places satisfied it.
+    let geoMatchPatterns = null;
+
     // City filter
     if (filters.city) {
+      geoMatchPatterns = [`%${filters.city}%`];
       clauses.push(`EXISTS (
         SELECT 1 FROM document_geolocations dg
         JOIN geolocations g ON dg.geolocation_id = g.id
         WHERE dg.document_id = d.id
-          AND (dg.geo_type = $${paramIndex} OR dg.geo_type IN ('creation', 'contextual'))
+          AND dg.geo_type = $${paramIndex}
           AND (g.name ILIKE $${paramIndex + 1} OR g.country ILIKE $${paramIndex + 1})
       )`);
       params.push(geoSource, `%${filters.city}%`);
@@ -124,9 +140,10 @@ export default async function handler(req, res) {
         SELECT 1 FROM document_geolocations dg
         JOIN geolocations g ON dg.geolocation_id = g.id
         WHERE dg.document_id = d.id
-          AND (dg.geo_type = $${paramIndex} OR dg.geo_type IN ('creation', 'contextual'))
+          AND dg.geo_type = $${paramIndex}
           AND (g.country ILIKE ANY($${paramIndex + 1}::text[]) OR g.name ILIKE ANY($${paramIndex + 1}::text[]))
       )`);
+      geoMatchPatterns = [...(geoMatchPatterns || []), ...countryPatterns];
       params.push(geoSource, countryPatterns);
       paramIndex += 2;
     }
@@ -350,12 +367,12 @@ export default async function handler(req, res) {
 
       // 2. Timeline Aggregation
       const timeQuery = `
-        SELECT te.year, ${countExpr} as count
+        SELECT ${SIGNED_YEAR('te')} AS year, ${countExpr} as count
         FROM temp_docs t
         JOIN document_time_entities dte ON t.id = dte.document_id
         JOIN time_entities te ON dte.time_entity_id = te.id
         WHERE dte.date_type = $1
-        GROUP BY te.year;
+        GROUP BY 1;
       `;
       const timeAgg = await client.query(timeQuery, [dateSource]);
       const yearsMap = {};
@@ -369,14 +386,17 @@ export default async function handler(req, res) {
                MAX(g.country) as country,
                AVG(ST_Y(g.geometry)) as lat,
                AVG(ST_X(g.geometry)) as lng,
-               ${countExpr} as total
+               ${countExpr} as total,
+               ${geoMatchPatterns
+                 ? 'BOOL_OR(g.name ILIKE ANY($2::text[]) OR g.country ILIKE ANY($2::text[]))'
+                 : 'FALSE'} as matched
         FROM temp_docs t
         JOIN document_geolocations dg ON t.id = dg.document_id
         JOIN geolocations g ON dg.geolocation_id = g.id
-        WHERE dg.geo_type = $1
+        WHERE dg.geo_type = $1 ${settlementsOnly}
         GROUP BY g.name;
       `;
-      const geoAgg = await client.query(geoQuery, [geoSource]);
+      const geoAgg = await client.query(geoQuery, geoMatchPatterns ? [geoSource, geoMatchPatterns] : [geoSource]);
       const citiesMap = {};
       geoAgg.rows.forEach(r => {
         const cleanName = (r.city || '').trim();
@@ -387,12 +407,14 @@ export default async function handler(req, res) {
           inferred: 0,
           lat: parseFloat(r.lat),
           lng: parseFloat(r.lng),
-          country: r.country
+          country: r.country,
+          matched: r.matched === true, // satisfies the active geography filter
         };
       });
 
       // 4. Features Aggregation (pre-populate all known attributes so characteristic tiles never disappear)
-      const allAttrsRes = await client.query('SELECT name FROM attributes_metadata;');
+      const allAttrsRes = await client.query(
+        'SELECT name FROM attributes_metadata WHERE NOT (name = ANY($1::text[]));', [PSEUDO_ATTRIBUTES]);
       const featuresMap = {};
       allAttrsRes.rows.forEach(r => {
         featuresMap[r.name] = 0;

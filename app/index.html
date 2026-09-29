@@ -84,7 +84,6 @@
             <div>
                 <div class="flex items-center">
                     <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
-                    <span id="serverModeBadge" class="hidden text-[11px] px-2 py-0.5 rounded font-bold ml-3 items-center gap-1 border"></span>
                 </div>
                 <p class="text-sm text-gray-500" id="statsline">Loading data...</p>
             </div>
@@ -211,8 +210,8 @@
 
 
 
-            <!-- Topics (Flexible but constrained) -->
-            <div class="flex flex-col min-h-0 shrink-0 overflow-hidden pb-8">
+            <!-- Topics (hidden while SHOW_TOPICS is false) -->
+            <div id="topicsPanel" class="hidden flex-col min-h-0 shrink-0 overflow-hidden pb-8">
                 <h3 class="text-xs font-semibold text-gray-700 uppercase mb-1">Topics</h3>
                 <div id="topicChart"
                     class="flex-1 overflow-y-auto border border-gray-100 rounded p-1 text-xs min-h-[200px]"></div>
@@ -250,7 +249,10 @@
                 <!-- Top Cities Overlay -->
                 <div
                     class="absolute top-4 right-4 w-64 max-h-[60%] bg-white/95 backdrop-blur shadow-xl rounded-lg flex flex-col z-[1000] p-4 border border-gray-200">
-                    <h3 class="text-sm font-bold text-gray-800 uppercase mb-2 border-b pb-2">Places</h3>
+                    <div class="mb-2 border-b pb-2">
+                        <h3 class="text-sm font-bold text-gray-800 uppercase">Places</h3>
+                        <p id="cityListCaption" class="text-[11px] text-gray-500 mt-0.5 leading-snug"></p>
+                    </div>
                     <div id="cityList" class="overflow-y-auto flex-1 text-xs pr-1"></div>
                 </div>
 
@@ -271,6 +273,8 @@
                             Count</span></div>
                     <div class="flex items-center gap-2"><span
                             class="w-3 h-3 rounded-full border border-blue-600 block"></span> Cities</div>
+                    <div id="legend-geo-match" class="hidden items-center gap-2 mt-1"><span
+                            class="w-3 h-3 rounded-full bg-amber-500 border border-amber-700 block"></span> Matches place filter</div>
                 </div>
             </div>
 
@@ -467,6 +471,7 @@
             geoSource: 'contextual'     // 'creation' | 'publication' | 'contextual'
         };
         let ALL_FEATURES = [];
+        const DB_LANGUAGE_NAMES = {};
         let EDITION_METADATA = {};
         let TOPIC_HIERARCHY = [];
         let DYNAMIC_FEATURES = new Set();
@@ -502,25 +507,19 @@
             }),
             fetch(`/api/info?v=${t}`).then(r => r.ok ? r.json() : null).catch(() => null)
         ]).then(([dbMeta, topicRes, serverInfo]) => {
-            // Render Server Mode Badge
-            const badgeEl = document.getElementById('serverModeBadge');
-            // Engine badge from /api/info; amber when migrations are missing.
-            if (badgeEl && serverInfo) {
-                const missing = (serverInfo.database && serverInfo.database.missingTables) || [];
-                const tone = missing.length
-                    ? 'bg-amber-100 text-amber-950 border-amber-300'
-                    : serverInfo.engine === 'heuristic'
-                        ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
-                        : 'bg-purple-100 text-purple-950 border-purple-300';
-                badgeEl.className = `inline-flex text-[11px] px-2 py-0.5 rounded font-bold ml-3 items-center gap-1 border ${tone}`;
-                badgeEl.textContent = serverInfo.engineName || serverInfo.engine || 'Intent engine';
-                badgeEl.title = missing.length
-                    ? `Database is missing: ${missing.map(m => m.table).join(', ')}. Some filters are skipped until these migrations run.`
-                    : `Search queries are interpreted by ${serverInfo.engineName}.`;
+            // Missing migrations are logged for developers; /api/info has details.
+            const missingTables = serverInfo?.database?.missingTables || [];
+            if (missingTables.length) {
+                console.warn('Database is missing tables (some filters are skipped):', missingTables.map(m => m.table).join(', '));
             }
 
             TOPIC_HIERARCHY = (Array.isArray(topicRes) && topicRes.length > 0) ? topicRes : (dbMeta.topics || []);
             ALL_FEATURES = dbMeta.features || [];
+            // Language names from the database (after patch_database.py), for codes
+            // the built-in LANGUAGE_NAMES map doesn't know (e.g. 'und').
+            (dbMeta.languages || []).forEach(l => {
+                if (l.iso_code && l.name && l.name !== l.iso_code) DB_LANGUAGE_NAMES[l.iso_code] = l.name;
+            });
 
             // Set up editions metadata
             EDITION_METADATA = {};
@@ -529,7 +528,10 @@
             });
 
             initMap();
-            renderTopicHierarchy(TOPIC_HIERARCHY);
+            if (SHOW_TOPICS) {
+                document.getElementById('topicsPanel').classList.replace('hidden', 'flex');
+                renderTopicHierarchy(TOPIC_HIERARCHY);
+            }
             updateDashboard();
         }).catch(err => {
             console.error("Error loading data:", err);
@@ -569,7 +571,7 @@
             FILTERS.yearRange = null; // Reset year filter when switching axes
             document.getElementById('btn-date-cre').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
             document.getElementById('btn-date-pub').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
-            document.getElementById('btn-date-con').className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
+            document.getElementById('btn-date-con').className = "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
 
             const btnId = `btn-date-${source.substring(0, 3)}`;
             document.getElementById(btnId).className = "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all";
@@ -577,7 +579,10 @@
             updateDashboard();
         }
 
-        function setGeoSource(source) {
+        const GEO_SOURCE_LABELS = { creation: 'creation places', publication: 'publication places', contextual: 'places mentioned in the text' };
+
+        function setGeoSource(source, refresh = true) {
+            if (!GEO_SOURCE_LABELS[source]) return;
             FILTERS.geoSource = source;
             document.getElementById('btn-geo-cre').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
             document.getElementById('btn-geo-pub').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
@@ -586,7 +591,7 @@
             const btnId = `btn-geo-${source.substring(0, 3)}`;
             document.getElementById(btnId).className = "flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all";
 
-            updateDashboard();
+            if (refresh) updateDashboard();
         }
 
         async function updateDashboard() {
@@ -639,8 +644,10 @@
                         }
                     });
                 }
-                attachCounts(TOPIC_HIERARCHY);
-                renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
+                if (SHOW_TOPICS) {
+                    attachCounts(TOPIC_HIERARCHY);
+                    renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
+                }
 
                 // If modal is open, refresh its content
                 const modal = document.getElementById('subsetModal');
@@ -756,7 +763,7 @@
             body.innerHTML = '';
             ids.forEach(id => {
                 // Format slug: underscores -> spaces, title-case
-                const label = id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const label = editionLabel(id);
                 const row = document.createElement('div');
                 row.className = 'px-1 py-0.5 rounded text-gray-700 hover:bg-gray-50 leading-snug';
                 row.textContent = label;
@@ -842,7 +849,9 @@
                 }
 
                 // Supported query: Apply facets and display decomposed intents
-                CURRENT_SEARCH_INTENTS = (intents || []).map(it => ({ ...it, active: true }));
+                CURRENT_SEARCH_INTENTS = (intents || [])
+                    .filter(it => SHOW_TOPICS || !isTopicIntent(it))
+                    .map(it => ({ ...it, active: true }));
                 applyBackendFacets(facets, intents);
 
                 statusEl.innerHTML = `
@@ -866,6 +875,25 @@
         }
 
         let CURRENT_SEARCH_INTENTS = [];
+
+        // Topic assignments are near-uniform in the current data (see
+        // data/geo_audit/FIX_PLAN.md, T1): the facet stays hidden until the
+        // topic model is rebuilt.
+        const SHOW_TOPICS = false;
+        const isTopicIntent = it => it && (it.facet === 'topic' || /^T\d+$/.test(it.facet || '') ||
+            (it.statement || '').toLowerCase().startsWith('topic:'));
+
+        // Years are signed (BC < 0); there is no year 0.
+        function formatYear(y) {
+            y = Number(y);
+            return y < 0 ? `${-y} BC` : `${y}`;
+        }
+
+        // Edition display name from the editions table, else the prettified slug.
+        function editionLabel(slug) {
+            const meta = (typeof EDITION_METADATA !== 'undefined' && EDITION_METADATA[slug]) || {};
+            return meta.display_name || String(slug || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
 
         // Which engine answered /api/interpret (see api/interpret.js fallback chain).
         const ENGINE_LABELS = { caisi: 'CaISI', gemini: 'Gemini', openai: 'OpenAI', heuristic: 'rule-based fallback' };
@@ -940,6 +968,7 @@
                 return `<button type="button" onclick="toggleIntentPill(${idx})" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${styleClass} border cursor-pointer transition-all select-none" ${titleAttr}>
                     ${statusDot}
                     <span>${escapeHtml(it.statement || it.facet || '')}</span>
+                    ${it.facet === 'geography' && it.filter?.source ? `<span class="ml-1 font-normal opacity-75">· ${escapeHtml(GEO_SOURCE_LABELS[it.filter.source] || it.filter.source)}</span>` : ''}
                 </button>`;
             }).join('');
         }
@@ -974,6 +1003,7 @@
                 // 2. Geography
                 else if (it.facet === 'geography' && it.filter?.values) {
                     FILTERS.country = it.filter.values[0];
+                    if (it.filter.source) setGeoSource(it.filter.source, false);
                 }
                 // 3. Language
                 else if (it.facet === 'language' && it.filter?.values) {
@@ -1009,7 +1039,7 @@
                     FILTERS.feature = { key: mappedKey, value: true };
                 }
                 // 7. Topic
-                else if (it.facet === 'topic' || it.facet?.startsWith('T') || it.statement?.toLowerCase().includes('topic:')) {
+                else if (SHOW_TOPICS && (it.facet === 'topic' || it.facet?.startsWith('T') || it.statement?.toLowerCase().includes('topic:'))) {
                     const topicId = (it.filter?.values && it.filter.values[0]) || (it.facet.startsWith('T') ? it.facet : null);
                     FILTERS.topicId = topicId;
                 }
@@ -1055,6 +1085,8 @@
                 const val = facets.geography[0].values?.[0];
                 if (val) {
                     FILTERS.country = val;
+                    // "letters from France" -> creation layer, "about France" -> contextual
+                    if (facets.geography[0].source) setGeoSource(facets.geography[0].source, false);
                 }
             }
 
@@ -1066,7 +1098,9 @@
             }
 
             // 4. Topic
-            if (facets.topicId) {
+            if (!SHOW_TOPICS) {
+                // topic facet disabled: ignore topic suggestions from search
+            } else if (facets.topicId) {
                 FILTERS.topicId = facets.topicId;
             } else if (Array.isArray(intents)) {
                 const topInt = intents.find(it => it.facet === 'topic' || it.statement?.toLowerCase().startsWith('topic:'));
@@ -1703,7 +1737,7 @@
             const data = Object.entries(langs)
                 .map(([k, v]) => ({
                     key: k,
-                    label: LANGUAGE_NAMES[k] || k,
+                    label: LANGUAGE_NAMES[k] || DB_LANGUAGE_NAMES[k] || k,
                     value: v.total,
                     confirmed: v.confirmed,
                     inferred: v.inferred
@@ -1735,11 +1769,25 @@
                 .map(([name, val]) => ({ name, ...val }))
                 // Hide non-geocoded items from side facet (coords come from the DB API)
                 .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
-                .sort((a, b) => b.total - a.total)
+                // Places that satisfy the geography filter come first.
+                .sort((a, b) => (b.matched - a.matched) || (b.total - a.total))
                 .slice(0, 50);
 
+            // Say what the list is: which layer, and that non-highlighted places co-occur.
+            const caption = document.getElementById('cityListCaption');
+            const geoFilter = FILTERS.city || FILTERS.country;
+            const unit = VIEW_MODE === 'document' ? 'documents' : 'editions';
+            if (caption) {
+                caption.innerHTML = geoFilter
+                    ? `${escapeHtml(GEO_SOURCE_LABELS[FILTERS.geoSource] || '')} of the matching ${unit}. <span class="text-amber-700 font-medium">Highlighted</span>: match “${escapeHtml(geoFilter)}”; others appear in the same ${unit}.`
+                    : `Count of ${unit} per place · ${escapeHtml(GEO_SOURCE_LABELS[FILTERS.geoSource] || '')}`;
+            }
+
+            const legendMatch = document.getElementById('legend-geo-match');
+            if (legendMatch) legendMatch.style.display = geoFilter ? 'flex' : 'none';
+
             if (entries.length === 0) return;
-            const maxVal = entries[0].total;
+            const maxVal = Math.max(...entries.map(e => e.total));
 
             const ul = document.createElement('ul');
             ul.className = "space-y-1";
@@ -1747,8 +1795,11 @@
 
             entries.forEach(c => {
                 const isActive = FILTERS.city === c.name;
+                const isMatch = isActive || (geoFilter && c.matched);
                 const baseClass = "flex items-center gap-2 cursor-pointer p-1 rounded transition-colors text-xs ";
-                const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm" : "hover:bg-gray-100 border border-transparent";
+                const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm"
+                    : isMatch ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                    : "hover:bg-gray-100 border border-transparent";
 
                 const li = document.createElement("li");
                 const row = document.createElement("div");
@@ -1758,13 +1809,13 @@
 
                 // Name
                 const nameDiv = document.createElement("div");
-                nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isActive ? "text-amber-900" : "text-gray-700");
+                nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isMatch ? "text-amber-900" : (geoFilter ? "text-gray-500" : "text-gray-700"));
                 nameDiv.innerText = c.name;
                 row.appendChild(nameDiv);
 
                 // Single-color bar (matches Topics style)
                 const bar = document.createElement("div");
-                bar.className = "h-1.5 rounded ml-2 " + (isActive ? "bg-amber-500" : "bg-sky-300");
+                bar.className = "h-1.5 rounded ml-2 " + (isMatch ? "bg-amber-500" : "bg-sky-300");
                 bar.style.width = `${(c.total / maxVal) * 50}px`;
                 bar.style.minWidth = c.total > 0 ? "2px" : "0px";
                 row.appendChild(bar);
@@ -1822,16 +1873,18 @@
 
                 let radius = 6;
 
+                const isMatch = (FILTERS.city || FILTERS.country) && stats.matched;
                 const marker = L.circleMarker([coords.lat, coords.lng], {
-                    radius: radius,
-                    fillColor: '#0ea5e9',
-                    color: '#0369a1',
+                    radius: isMatch ? 7 : radius,
+                    fillColor: isMatch ? '#f59e0b' : '#0ea5e9',
+                    color: isMatch ? '#b45309' : '#0369a1',
                     weight: 1,
                     opacity: 1,
                     fillOpacity: 0.8
                 });
 
-                let tooltip = `<b>${cityName}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
+                let tooltip = `<b>${escapeHtml(cityName)}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
+                if (isMatch) tooltip += `<br/><span class="text-amber-700 text-[10px]">matches the place filter</span>`;
                 if (stats.inferred > 0) {
                     tooltip += `<br/><span class="text-yellow-600 text-[10px]">(${stats.confirmed} confirmed, ${stats.inferred} inferred)</span>`;
                 }
@@ -1957,8 +2010,8 @@
             if (yearBadge) {
                 if (FILTERS.yearRange && FILTERS.yearRange.length === 2) {
                     const label = FILTERS.yearRange[0] === FILTERS.yearRange[1] 
-                        ? `${FILTERS.yearRange[0]}` 
-                        : `${FILTERS.yearRange[0]}–${FILTERS.yearRange[1]}`;
+                        ? formatYear(FILTERS.yearRange[0])
+                        : `${formatYear(FILTERS.yearRange[0])}–${formatYear(FILTERS.yearRange[1])}`;
                     yearBadge.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs";
                     yearBadge.innerHTML = `<span>⏱️ <b>${label}</b></span><button onclick="clearYearFilter(event)" class="hover:text-red-700 font-bold ml-1 text-sm leading-none" title="Clear time filter">×</button>`;
                 } else {
@@ -2006,18 +2059,19 @@
                 .attr("y", d => y(d.count))
                 .attr("height", d => y(0) - y(d.count));
 
-            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\n${VIEW_MODE === 'edition' ? 'Editions' : 'Documents'}: ${d.count.toLocaleString()} (Click to filter)`);
+            bars.append("title").text(d => `Time: ${formatYear(d.year)}–${formatYear(d.year + 4)}\n${VIEW_MODE === 'edition' ? 'Editions' : 'Documents'}: ${d.count.toLocaleString()} (Click to filter)`);
 
             // X Axis
             if (x.bandwidth() > 0) {
                 // Responsive Ticks: calculate interval based on width
-                let tickInterval = 10; // Default (50 years)
-                if (w < 500) tickInterval = 40; // 200 years
-                else if (w < 1000) tickInterval = 20; // 100 years
+                // About one label per 90 px, on round years (multiples of 50/100/250/500).
+                const span = x.domain().length * 5;
+                const maxLabels = Math.max(3, Math.floor(w / 90));
+                const step = [50, 100, 250, 500, 1000].find(s => span / s <= maxLabels) || 1000;
 
                 const xAxis = d3.axisBottom(x)
-                    .tickValues(x.domain().filter((d, i) => i % tickInterval === 0))
-                    .tickFormat(d => d);
+                    .tickValues(x.domain().filter(d => d % step === 0))
+                    .tickFormat(d => formatYear(d));
 
                 svg.append("g")
                     .attr("transform", `translate(0,${h - margin.bottom})`)
@@ -2324,7 +2378,7 @@
                                         <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(d.name)}</td>
                                         <td class="px-4 py-2 text-gray-600">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800">
-                                                ${escapeHtml((d.edition_name || SELECTED_EDITION_DRILLDOWN || '').replace(/_/g, ' '))}
+                                                ${escapeHtml(editionLabel(d.edition_name || SELECTED_EDITION_DRILLDOWN || ''))}
                                             </span>
                                         </td>
                                         <td class="px-4 py-2.5 text-right">
@@ -2358,7 +2412,7 @@
             metaBadgesEl.innerHTML = '';
             bodyEl.innerHTML = `<div class="flex items-center justify-center py-24 text-gray-400 text-sm gap-2">
                 <svg class="animate-spin h-5 w-5 text-sky-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <span>Loading Extracted Tags & Entities...</span>
+                <span>Loading document…</span>
             </div>`;
 
             try {
@@ -2387,63 +2441,101 @@
             const bodyEl = document.getElementById('docReaderBody');
 
             titleEl.textContent = doc.name;
-            editionEl.textContent = doc.edition.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            editionEl.textContent = editionLabel(doc.edition);
 
-            // Build metadata badges
-            const badges = [];
-            if (doc.dates && doc.dates.length > 0) {
-                const yrs = [...new Set(doc.dates.map(d => d.year))].join(', ');
-                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-amber-100 text-amber-900 border border-amber-300 font-medium">⏱️ ${yrs}</span>`);
-            }
-            if (doc.places && doc.places.length > 0) {
-                const pl = doc.places.slice(0, 4).map(p => p.name).join(', ');
-                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-medium">📍 ${escapeHtml(pl)}</span>`);
-            }
-            if (doc.languages && doc.languages.length > 0) {
-                const lng = doc.languages.map(l => l.name || l.iso).join(', ');
-                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-blue-100 text-blue-900 border border-blue-300 font-medium">🌐 ${escapeHtml(lng)}</span>`);
-            }
-            if (doc.topics && doc.topics.length > 0) {
-                const tp = doc.topics.map(t => t.name).join(', ');
-                badges.push(`<span class="px-2 py-0.5 rounded text-[11px] bg-purple-100 text-purple-900 border border-purple-300 font-medium">🏷️ ${escapeHtml(tp)}</span>`);
-            }
-            metaBadgesEl.innerHTML = badges.join('');
+            // The header only identifies the document; everything extracted
+            // from it is shown in the body, in two labelled sections.
+            metaBadgesEl.innerHTML = `<span class="text-xs text-gray-500">Document ID ${doc.id}</span>`;
 
-            // Render Extracted Tags & Entities table
+            const SOURCE_ORDER = ['creation', 'publication', 'contextual'];
+            const SOURCE_LABEL = { creation: 'Creation', publication: 'Publication', contextual: 'Mentioned in text' };
+            const chip = (text, tone) =>
+                `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${tone}">${escapeHtml(String(text))}</span>`;
+            const TONE = {
+                date: 'bg-amber-50 text-amber-900 border-amber-200',
+                place: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+                lang: 'bg-blue-50 text-blue-900 border-blue-200',
+                topic: 'bg-purple-50 text-purple-900 border-purple-200',
+            };
+
+            // Group values by their source type (creation / publication / contextual).
+            function groupedChips(items, typeKey, valueOf, tone) {
+                const groups = new Map();
+                for (const it of items) {
+                    const type = it[typeKey] || 'other';
+                    if (!groups.has(type)) groups.set(type, new Set());
+                    groups.get(type).add(valueOf(it));
+                }
+                const types = [...groups.keys()].sort((a, b) =>
+                    (SOURCE_ORDER.indexOf(a) + 1 || 99) - (SOURCE_ORDER.indexOf(b) + 1 || 99));
+                return types.map(type => `
+                    <div class="flex flex-wrap items-baseline gap-1.5">
+                        <span class="text-[11px] text-gray-500 w-32 shrink-0">${escapeHtml(SOURCE_LABEL[type] || type)}</span>
+                        <div class="flex flex-wrap gap-1.5 flex-1">${[...groups.get(type)].sort().map(v => chip(v, tone)).join('')}</div>
+                    </div>`).join('');
+            }
+
+            const none = `<span class="text-xs text-gray-400">None extracted</span>`;
+            const metaRows = [
+                ['Dates', doc.dates && doc.dates.length
+                    ? groupedChips(doc.dates, 'date_type', d => formatYear(d.year), TONE.date) : none],
+                ['Places', doc.places && doc.places.length
+                    ? groupedChips(doc.places, 'geo_type', pl => pl.name, TONE.place) : none],
+                ['Language', doc.languages && doc.languages.length
+                    ? `<div class="flex flex-wrap gap-1.5">${doc.languages.map(l => chip(l.name && l.name !== l.iso ? `${l.name} (${l.iso})` : l.iso, TONE.lang)).join('')}</div>` : none],
+                ['Topic', doc.topics && doc.topics.length
+                    ? `<div class="flex flex-wrap gap-1.5">${doc.topics.map(t => chip(t.name, TONE.topic)).join('')}</div>` : none],
+            ].filter(([label]) => SHOW_TOPICS || label !== 'Topic');
+
+            const metadataSection = `
+                <section>
+                    <div class="flex items-baseline justify-between mb-2">
+                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">Extracted metadata</h4>
+                        <span class="text-[11px] text-gray-500">Values used by the dashboard filters</span>
+                    </div>
+                    <dl class="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        ${metaRows.map(([label, html]) => `
+                            <div class="grid grid-cols-[6.5rem_1fr] gap-3 px-4 py-2.5">
+                                <dt class="text-xs font-semibold text-gray-600 pt-0.5">${label}</dt>
+                                <dd class="space-y-1.5">${html}</dd>
+                            </div>`).join('')}
+                    </dl>
+                </section>`;
+
             const tagRows = doc.tagValues || [];
-            if (tagRows.length === 0) {
-                bodyEl.innerHTML = `<div class="text-center py-16 text-gray-400 text-sm">No structured tag values extracted for this document.</div>`;
-                return;
-            }
-
-            bodyEl.innerHTML = `
-                <div class="space-y-4">
-                    <div class="flex items-center justify-between">
-                        <h4 class="font-bold text-xs text-gray-700 uppercase">Extracted TEI Tags & Values (${tagRows.length})</h4>
-                        <span class="text-xs text-gray-500 font-normal">Indexed from XML</span>
+            const tagEmptyText = doc.tagValuesAvailable === false
+                ? 'The TEI tag-value index has not been built on this database yet (migrations 006 and 007).'
+                : 'No TEI tag values were indexed for this document.';
+            const tagSection = `
+                <section>
+                    <div class="flex items-baseline justify-between mb-2">
+                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">TEI tag values${tagRows.length ? ` (${tagRows.length})` : ''}</h4>
+                        <span class="text-[11px] text-gray-500">Element content indexed from the XML</span>
                     </div>
-                    <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-2xs">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
-                                <tr>
-                                    <th class="px-4 py-2.5 w-36">TEI Tag</th>
-                                    <th class="px-4 py-2.5">Extracted Value / Text Entity</th>
-                                    <th class="px-4 py-2.5 w-24 text-right">Occurrences</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 bg-white">
-                                ${tagRows.map(tr => `
-                                    <tr class="hover:bg-amber-50/30 transition-colors">
-                                        <td class="px-4 py-2 font-mono text-sky-700 font-bold">&lt;${escapeHtml(tr.tag_name)}&gt;</td>
-                                        <td class="px-4 py-2 text-gray-900 font-medium">${escapeHtml(tr.value)}</td>
-                                        <td class="px-4 py-2 text-right text-gray-500 font-mono">${tr.count}</td>
+                    ${tagRows.length === 0
+                        ? `<div class="border border-dashed border-gray-200 rounded-lg px-4 py-6 text-center text-xs text-gray-500">${tagEmptyText}</div>`
+                        : `<div class="overflow-x-auto border border-gray-200 rounded-lg">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
+                                    <tr>
+                                        <th class="px-4 py-2.5 w-36">TEI element</th>
+                                        <th class="px-4 py-2.5">Value</th>
+                                        <th class="px-4 py-2.5 w-24 text-right">Occurrences</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    ${tagRows.map(tr => `
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-4 py-2 font-mono text-sky-700 font-semibold">&lt;${escapeHtml(tr.tag_name)}&gt;</td>
+                                            <td class="px-4 py-2 text-gray-900">${escapeHtml(tr.value)}</td>
+                                            <td class="px-4 py-2 text-right text-gray-500 font-mono">${tr.count}</td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>`}
+                </section>`;
+
+            bodyEl.innerHTML = `<div class="space-y-6">${metadataSection}${tagSection}</div>`;
         }
 
     </script>
@@ -2514,7 +2606,7 @@
 
             <!-- Footer -->
             <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
-                <span>Extracted TEI entities and metadata</span>
+                <span>Metadata and TEI values extracted during ingestion</span>
                 <button type="button" onclick="closeDocumentReader()" class="px-4 py-1.5 bg-gray-800 text-white rounded font-medium hover:bg-gray-700 transition-colors cursor-pointer">Close</button>
             </div>
         </div>
