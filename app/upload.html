@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dataset Curation · Digital Editions Explorer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .chip { display: inline-flex; align-items: center; gap: .25rem; padding: .05rem .45rem; border-radius: .25rem;
+            font-size: 11px; line-height: 1.2rem; border: 1px solid #e5e7eb; background: #f9fafb; color: #4b5563; white-space: nowrap; }
+    .chip-sky { background: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+    .chip-amber { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .chip-red { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .chip-green { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+    .switch { position: relative; width: 2.1rem; height: 1.15rem; border-radius: 999px; background: #d1d5db; transition: background .15s; flex-shrink: 0; }
+    .switch::after { content: ''; position: absolute; top: .15rem; left: .15rem; width: .85rem; height: .85rem; border-radius: 999px; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .switch.on { background: #0ea5e9; }
+    .switch.on::after { transform: translateX(.95rem); }
+    .seg button { padding: .3rem .7rem; font-size: 12px; color: #6b7280; }
+    .seg button.active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,.08); border-radius: .3rem; }
+    .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+  <header class="bg-white border-b border-gray-200 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800">Dataset Curation</h1>
+        <p class="text-sm text-gray-500" id="summaryLine">Loading…</p>
+      </div>
+      <a href="/" class="text-sm font-medium text-gray-500 hover:text-sky-600 whitespace-nowrap">← Back to the Explorer</a>
+    </div>
+    <div class="max-w-6xl mx-auto px-4 flex gap-6 text-sm">
+      <button id="tabEditions" class="py-2 border-b-2 border-sky-500 text-gray-900 font-medium" onclick="showTab('editions')">Editions</button>
+      <button id="tabUpload" class="py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800" onclick="showTab('upload')">Add documents</button>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-5">
+
+    <!-- ================= Editions ================= -->
+    <section id="viewEditions">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <input id="edSearch" type="search" placeholder="Filter editions by name, description or publisher…"
+               class="flex-1 min-w-[220px] bg-white border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" oninput="renderEditions()">
+        <div class="seg flex bg-gray-100 rounded p-0.5" id="edStatus">
+          <button data-v="all" class="active" onclick="setStatusFilter('all')">All</button>
+          <button data-v="visible" onclick="setStatusFilter('visible')">Visible</button>
+          <button data-v="hidden" onclick="setStatusFilter('hidden')">Hidden</button>
+        </div>
+        <select id="edSort" class="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm" onchange="renderEditions()">
+          <option value="name">Sort: name</option>
+          <option value="docs">Sort: documents</option>
+          <option value="years">Sort: earliest year</option>
+        </select>
+      </div>
+
+      <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+        <div class="hidden md:grid grid-cols-[minmax(0,2.6fr)_90px_120px_minmax(0,1.2fr)_110px_80px_28px] gap-3 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200">
+          <div>Edition</div><div class="text-right">Documents</div><div>Years</div><div>Languages</div>
+          <div title="Share of place mentions that have coordinates">Places located</div><div>Visible</div><div></div>
+        </div>
+        <div id="edList"><div class="p-6 text-sm text-gray-500">Loading editions…</div></div>
+      </div>
+      <p class="text-xs text-gray-500 mt-3">Hiding an edition or document keeps it out of the Explorer; nothing is deleted.
+        Years are creation and historical publication dates; the digital edition's own date is shown separately.</p>
+    </section>
+
+    <!-- ================= Add documents ================= -->
+    <section id="viewUpload" class="hidden">
+      <div id="uploadUnavailable" class="hidden mb-4 p-3 rounded border border-amber-200 bg-amber-50 text-sm text-amber-900"></div>
+
+      <div class="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-5">
+        <div class="space-y-5">
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">1 · Edition</h2>
+            <div class="seg flex bg-gray-100 rounded p-0.5 w-fit mb-3" id="edModeSeg">
+              <button data-v="existing" class="active" onclick="setEditionMode('existing')">Existing edition</button>
+              <button data-v="new" onclick="setEditionMode('new')">New edition</button>
+            </div>
+            <div id="edExisting">
+              <select id="edSelect" class="w-full bg-white border border-gray-300 rounded px-2 py-1.5 text-sm"></select>
+            </div>
+            <div id="edNew" class="hidden space-y-2">
+              <label class="block text-xs text-gray-600">Folder name <span class="text-gray-400">(letters, digits, _ ; becomes raw_documents/&lt;name&gt;/)</span>
+                <input id="newSlug" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono" placeholder="e.g. my_letters_edition" oninput="validateSlug()">
+              </label>
+              <p id="slugMsg" class="text-xs text-red-600 hidden"></p>
+              <label class="block text-xs text-gray-600">Display name
+                <input id="newName" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="e.g. The Letters of …">
+              </label>
+              <label class="block text-xs text-gray-600">Website
+                <input id="newWeb" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="https://…">
+              </label>
+              <label class="block text-xs text-gray-600">Description
+                <textarea id="newDesc" rows="3" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="What the edition contains, who publishes it."></textarea>
+              </label>
+              <p class="text-[11px] text-gray-500">Empty fields stay empty; nothing is filled in with placeholders. You can edit them later under Editions.</p>
+            </div>
+          </div>
+
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">2 · TEI files</h2>
+            <label id="dropzone" class="block border-2 border-dashed border-gray-300 hover:border-sky-400 rounded-lg p-6 text-center cursor-pointer text-sm text-gray-500">
+              <input id="fileInput" type="file" multiple accept=".xml" class="hidden">
+              Drop .xml files here or <span class="text-sky-600 underline">choose files</span>
+              <span class="block text-[11px] mt-1 text-gray-400">TEI with a &lt;teiHeader&gt;, up to 25 MB each</span>
+            </label>
+            <label class="flex items-center gap-2 mt-3 text-xs text-gray-600">
+              <input id="replaceExisting" type="checkbox"> Replace documents that already exist (same file name)
+            </label>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="btnCheck" onclick="runAll('preview')" class="flex-1 px-4 py-2 rounded border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50 disabled:opacity-40">Check files</button>
+            <button id="btnAdd" onclick="runAll('ingest')" class="flex-1 px-4 py-2 rounded bg-gray-800 text-white text-sm font-medium hover:bg-gray-700 disabled:opacity-40">Add to database</button>
+          </div>
+          <p class="text-[11px] text-gray-500">Files are processed with the same extraction as the database build (data/build):
+            dates by role, languages from the text, places from registers, authority ids and GeoNames.
+            New documents get no topic until the next full build.</p>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Files <span id="queueCount" class="ml-1 chip">0</span></h2>
+            <button onclick="clearQueue()" class="text-xs text-gray-400 hover:text-red-600">Clear</button>
+          </div>
+          <div id="queue" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
+            <p class="p-6 text-sm text-gray-400">No files yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="hidden fixed bottom-4 right-4 z-50 px-4 py-2 rounded bg-gray-800 text-white text-sm shadow-lg"></div>
+
+<script>
+  // ------------------------------------------------------------------ helpers
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmtYear = (y) => (y === null || y === undefined) ? '' : (y < 0 ? `${-y} BC` : String(y));
+  const fmtRange = (a, b) => (a === null || a === undefined) ? '–' : (a === b ? fmtYear(a) : `${fmtYear(a)}–${fmtYear(b)}`);
+  const num = (n) => Number(n || 0).toLocaleString('en-US');
+  function toast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `fixed bottom-4 right-4 z-50 px-4 py-2 rounded text-white text-sm shadow-lg ${isError ? 'bg-red-600' : 'bg-gray-800'}`;
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), 3500);
+  }
+  async function api(url, opts) {
+    const res = await fetch(url, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { status: res.status, data });
+    return data;
+  }
+  const post = (url, body) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  // ------------------------------------------------------------------ tabs
+  function showTab(t) {
+    document.getElementById('viewEditions').classList.toggle('hidden', t !== 'editions');
+    document.getElementById('viewUpload').classList.toggle('hidden', t !== 'upload');
+    for (const [id, v] of [['tabEditions', 'editions'], ['tabUpload', 'upload']]) {
+      const b = document.getElementById(id);
+      b.className = t === v ? 'py-2 border-b-2 border-sky-500 text-gray-900 font-medium' : 'py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-800';
+    }
+    history.replaceState(null, '', t === 'upload' ? '#add' : '#');
+  }
+
+  // ------------------------------------------------------------------ editions
+  let EDITIONS = [], STATUS = 'all';
+  const OPEN = new Set();          // expanded edition ids
+  const DOCSTATE = {};             // editionId -> {search, offset, docs, total}
+
+  async function loadEditions() {
+    try {
+      const data = await api('/api/manage');
+      EDITIONS = data.editions;
+      const s = data.summary;
+      const built = s.build?.built ? ` · database built ${String(s.build.built).slice(0, 10)}` : '';
+      document.getElementById('summaryLine').textContent =
+        `${num(s.editions)} editions (${num(s.hiddenEditions)} hidden) · ${num(s.documents)} documents, ${num(s.visibleDocuments)} visible${built}`;
+      renderEditions();
+      fillEditionSelect();
+    } catch (e) {
+      document.getElementById('edList').innerHTML = `<div class="p-6 text-sm text-red-600">Could not load editions: ${esc(e.message)}</div>`;
+      document.getElementById('summaryLine').textContent = 'Database unavailable';
+    }
+  }
+
+  function setStatusFilter(v) {
+    STATUS = v;
+    document.querySelectorAll('#edStatus button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
+    renderEditions();
+  }
+
+  const label = (e) => e.display_name || e.name;
+
+  function renderEditions() {
+    const q = document.getElementById('edSearch').value.trim().toLowerCase();
+    const sort = document.getElementById('edSort').value;
+    let rows = EDITIONS.filter((e) => STATUS === 'all' || (STATUS === 'hidden') === e.is_excluded);
+    if (q) rows = rows.filter((e) => [e.name, e.display_name, e.description, e.publisher].some((v) => (v || '').toLowerCase().includes(q)));
+    rows.sort(sort === 'docs' ? (a, b) => b.documents - a.documents
+      : sort === 'years' ? (a, b) => (a.year_min ?? 1e9) - (b.year_min ?? 1e9)
+      : (a, b) => label(a).localeCompare(label(b), undefined, { sensitivity: 'base' }));
+    const list = document.getElementById('edList');
+    if (!rows.length) { list.innerHTML = '<div class="p-6 text-sm text-gray-500">No editions match.</div>'; return; }
+    list.innerHTML = rows.map(rowHtml).join('');
+    rows.filter((e) => OPEN.has(e.id)).forEach((e) => renderDocs(e.id));
+  }
+
+  function rowHtml(e) {
+    const share = e.place_links ? Math.round(100 * e.located_links / e.place_links) : null;
+    const langs = (e.languages || []).map((l) => `<span class="chip" title="${esc(l.name)}: ${num(l.n)} documents">${esc(l.code)}</span>`).join(' ');
+    const open = OPEN.has(e.id);
+    const dim = e.is_excluded ? 'opacity-60' : '';
+    return `
+    <div class="border-b border-gray-100 last:border-0" id="ed-${e.id}">
+      <div class="grid grid-cols-[1fr_auto] md:grid-cols-[minmax(0,2.6fr)_90px_120px_minmax(0,1.2fr)_110px_80px_28px] gap-3 px-4 py-2.5 items-center hover:bg-gray-50 cursor-pointer"
+           onclick="toggleEdition(${e.id})">
+        <div class="min-w-0 ${dim}">
+          <div class="text-sm font-medium text-gray-900 truncate">${esc(label(e))}</div>
+          <div class="text-[11px] text-gray-400 font-mono truncate">${esc(e.name)}</div>
+        </div>
+        <div class="hidden md:block text-right text-sm tabular-nums ${dim}">${num(e.documents)}${e.hidden_documents ? `<div class="text-[10px] text-gray-400">${num(e.hidden_documents)} hidden</div>` : ''}</div>
+        <div class="hidden md:block text-sm tabular-nums text-gray-600 ${dim}" title="Creation and publication years of the documents">${e.year_min != null ? fmtRange(e.year_min, e.year_max)
+          : e.mentioned_min != null ? `<span title="No creation or publication dates; these are years mentioned in the documents' text">${fmtRange(e.mentioned_min, e.mentioned_max)} <span class="text-[10px] text-gray-400">mentioned</span></span>`
+          : '<span class="text-gray-400 text-xs">no dates</span>'}</div>
+        <div class="hidden md:flex flex-wrap gap-1 ${dim}">${langs || '<span class="text-xs text-gray-400">–</span>'}</div>
+        <div class="hidden md:block ${dim}">${share === null ? '<span class="text-xs text-gray-400">no places</span>' :
+          `<div class="flex items-center gap-2"><div class="h-1.5 w-14 bg-gray-100 rounded"><div class="h-1.5 rounded bg-sky-400" style="width:${share}%"></div></div><span class="text-xs tabular-nums text-gray-600">${share}%</span></div>`}</div>
+        <div class="flex items-center" onclick="event.stopPropagation()">
+          <button class="switch ${e.is_excluded ? '' : 'on'}" title="${e.is_excluded ? 'Hidden: click to show in the Explorer' : 'Visible: click to hide from the Explorer'}"
+                  onclick="toggleEditionVisible(${e.id})"></button>
+        </div>
+        <div class="hidden md:block text-gray-400 text-sm">${open ? '▾' : '▸'}</div>
+      </div>
+      ${open ? detailHtml(e) : ''}
+    </div>`;
+  }
+
+  function detailHtml(e) {
+    return `
+      <div class="px-4 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
+        <div id="edView-${e.id}" class="grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 py-3">
+          <div>
+            <p class="text-sm text-gray-700 leading-relaxed">${e.description ? esc(e.description) : '<span class="text-gray-400">No description.</span>'}</p>
+            <div class="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
+              ${e.website ? `<a class="text-sky-600 hover:underline" href="${esc(e.website)}" target="_blank" rel="noopener">${esc(e.website)}</a>` : '<span>No website</span>'}
+              ${e.publisher ? `<span>${esc(e.publisher)}</span>` : ''}
+              ${e.description_source ? `<a class="hover:underline" href="${esc(e.description_source)}" target="_blank" rel="noopener">description source</a>` : ''}
+            </div>
+          </div>
+          <div class="text-xs text-gray-600 space-y-1">
+            <div>Digital edition date: ${e.edition_date_year != null ? `<b>${e.edition_date_year}</b>` : '<span class="text-gray-400">not stated in the files</span>'}</div>
+            <div>Place mentions: <b>${num(e.place_links)}</b>, located <b>${num(e.located_links)}</b></div>
+            <div class="flex gap-2 pt-2">
+              <button class="px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50" onclick="editEdition(${e.id})">Edit details</button>
+              <button class="px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50" onclick="addToEdition('${esc(e.name)}')">Add documents</button>
+            </div>
+          </div>
+        </div>
+        <div id="edEdit-${e.id}" class="hidden"></div>
+        <div id="docs-${e.id}" class="bg-white border border-gray-200 rounded"></div>
+      </div>`;
+  }
+
+  function toggleEdition(id) {
+    OPEN.has(id) ? OPEN.delete(id) : OPEN.add(id);
+    renderEditions();
+  }
+
+  async function toggleEditionVisible(id) {
+    const e = EDITIONS.find((x) => x.id === id);
+    try {
+      await post('/api/manage', { action: 'toggle_edition_exclusion', id, isExcluded: !e.is_excluded });
+      e.is_excluded = !e.is_excluded;
+      toast(`${label(e)} is now ${e.is_excluded ? 'hidden' : 'visible'} in the Explorer.`);
+      renderEditions();
+    } catch (err) { toast(err.message, true); }
+  }
+
+  function editEdition(id) {
+    const e = EDITIONS.find((x) => x.id === id);
+    document.getElementById(`edView-${id}`).classList.add('hidden');
+    const box = document.getElementById(`edEdit-${id}`);
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <div class="py-3 space-y-2 max-w-3xl">
+        <label class="block text-xs text-gray-600">Display name
+          <input id="f-name-${id}" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value="${esc(e.display_name || '')}" placeholder="${esc(e.name)}"></label>
+        <label class="block text-xs text-gray-600">Website
+          <input id="f-web-${id}" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value="${esc(e.website || '')}" placeholder="https://…"></label>
+        <label class="block text-xs text-gray-600">Description
+          <textarea id="f-desc-${id}" rows="4" class="mt-1 w-full border border-gray-300 rounded px-2 py-1.5 text-sm">${esc(e.description || '')}</textarea></label>
+        <div class="flex gap-2">
+          <button class="px-3 py-1.5 rounded bg-gray-800 text-white text-xs" onclick="saveEdition(${id})">Save</button>
+          <button class="px-3 py-1.5 rounded border border-gray-300 bg-white text-xs" onclick="renderEditions()">Cancel</button>
+        </div>
+      </div>`;
+  }
+
+  async function saveEdition(id) {
+    const e = EDITIONS.find((x) => x.id === id);
+    const body = { action: 'update_edition', id, display_name: document.getElementById(`f-name-${id}`).value,
+      website: document.getElementById(`f-web-${id}`).value, description: document.getElementById(`f-desc-${id}`).value };
+    try {
+      await post('/api/manage', body);
+      Object.assign(e, { display_name: body.display_name.trim() || null, website: body.website.trim(), description: body.description.trim() });
+      toast('Saved.');
+      renderEditions();
+      fillEditionSelect();
+    } catch (err) { toast(err.message, true); }
+  }
+
+  // ------------------------------------------------------------------ documents of an edition
+  async function renderDocs(edId, reload = false) {
+    const st = DOCSTATE[edId] || (DOCSTATE[edId] = { search: '', offset: 0, docs: null, total: 0 });
+    const box = document.getElementById(`docs-${edId}`);
+    if (!box) return;
+    if (!st.docs || reload) {
+      box.innerHTML = '<div class="p-3 text-xs text-gray-500">Loading documents…</div>';
+      try {
+        const q = new URLSearchParams({ editionId: edId, limit: 50, offset: st.offset, search: st.search });
+        const d = await api(`/api/manage?${q}`);
+        st.docs = d.documents; st.total = d.total;
+      } catch (err) { box.innerHTML = `<div class="p-3 text-xs text-red-600">${esc(err.message)}</div>`; return; }
+    }
+    const from = st.total ? st.offset + 1 : 0, to = st.offset + st.docs.length;
+    box.innerHTML = `
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+        <input type="search" value="${esc(st.search)}" placeholder="Search title, file name or id…"
+               class="flex-1 border border-gray-300 rounded px-2 py-1 text-xs" onkeydown="if(event.key==='Enter') searchDocs(${edId}, this.value)">
+        <span class="text-xs text-gray-500 tabular-nums whitespace-nowrap">${num(from)}–${num(to)} of ${num(st.total)}</span>
+        <button class="text-xs px-2 py-1 rounded border border-gray-300 disabled:opacity-30" ${st.offset === 0 ? 'disabled' : ''} onclick="pageDocs(${edId}, -1)">‹</button>
+        <button class="text-xs px-2 py-1 rounded border border-gray-300 disabled:opacity-30" ${to >= st.total ? 'disabled' : ''} onclick="pageDocs(${edId}, 1)">›</button>
+      </div>
+      ${st.docs.length ? `
+        <div class="flex items-center gap-3 px-3 py-1 border-b border-gray-100 text-[10px] uppercase tracking-wide text-gray-400">
+          <span class="flex-1">Document</span>
+          <span class="w-32 text-right">Year</span>
+          <span class="w-28">Language</span>
+          <span class="w-9"></span>
+          <span class="w-9 text-right">Visible</span>
+        </div>` + st.docs.map((d) => {
+          const layer = YEAR_LAYER[d.year_type] || '';
+          const year = d.year != null
+            ? `${fmtYear(d.year)}${d.year_type !== 'creation' ? ` <span class="text-[10px] text-gray-400">${layer}</span>` : ''}`
+            : '<span class="text-gray-400">no date</span>';
+          const langs = (d.languages || []);
+          const lang = langs.length
+            ? esc(langs.map((l) => l.name || l.code).join(', '))
+            : '<span class="text-gray-400" title="Too little running text to detect a language, and the file does not declare one">not detected</span>';
+          return `
+        <div class="doc-row flex items-center gap-3 px-3 py-1.5 border-b border-gray-50 last:border-0 text-xs cursor-pointer hover:bg-sky-50 ${d.is_excluded ? 'opacity-50' : ''}"
+             onclick="openDoc(${d.id})" title="Open in the Explorer">
+          <div class="min-w-0 flex-1">
+            <div class="text-gray-800 truncate">${esc(d.name || '(no title)')}</div>
+            <div class="text-[10px] text-gray-400 font-mono truncate">${esc(d.file_path || '')}</div>
+          </div>
+          <span class="tabular-nums text-gray-600 w-32 text-right whitespace-nowrap" title="${d.year == null ? 'No creation, publication or mentioned year was found'
+            : d.year_type === 'contextual' ? 'A year mentioned in the text, not the creation date (none is known)'
+            : d.year_type === 'publication' ? 'Publication year (no creation date is known)' : 'Creation year'}">${year}</span>
+          <span class="text-gray-600 w-28 truncate">${lang}</span>
+          <span class="w-9 text-sky-600">Open</span>
+          <button class="switch ${d.is_excluded ? '' : 'on'}" title="${d.is_excluded ? 'Hidden: click to show' : 'Visible: click to hide'}"
+                  onclick="event.stopPropagation(); toggleDocVisible(${edId}, ${d.id})"></button>
+        </div>`; }).join('') : '<div class="p-3 text-xs text-gray-500">No documents match.</div>'}`;
+  }
+  // Which date the Year column shows: creation if known, else publication, else a year from the text.
+  const YEAR_LAYER = { creation: 'created', publication: 'published', contextual: 'mentioned in text' };
+  function openDoc(id) { window.open(`/?doc=${id}`, '_blank', 'noopener'); }
+  function searchDocs(edId, v) { Object.assign(DOCSTATE[edId], { search: v.trim(), offset: 0 }); renderDocs(edId, true); }
+  function pageDocs(edId, dir) { const st = DOCSTATE[edId]; st.offset = Math.max(0, st.offset + dir * 50); renderDocs(edId, true); }
+  async function toggleDocVisible(edId, docId) {
+    const st = DOCSTATE[edId]; const d = st.docs.find((x) => x.id === docId);
+    try {
+      await post('/api/manage', { action: 'toggle_document_exclusion', id: docId, isExcluded: !d.is_excluded });
+      d.is_excluded = !d.is_excluded;
+      const e = EDITIONS.find((x) => x.id === edId); e.hidden_documents += d.is_excluded ? 1 : -1;
+      renderDocs(edId);
+    } catch (err) { toast(err.message, true); }
+  }
+
+  // ------------------------------------------------------------------ add documents
+  let EDMODE = 'existing', QUEUE = [], UPLOAD_OK = true, BUSY = false;
+
+  function fillEditionSelect(pick) {
+    const sel = document.getElementById('edSelect');
+    const cur = pick || sel.value;
+    const eds = [...EDITIONS].sort((a, b) => label(a).localeCompare(label(b), undefined, { sensitivity: 'base' }));
+    sel.innerHTML = eds.map((e) => `<option value="${esc(e.name)}">${esc(label(e))}${e.display_name ? ` — ${esc(e.name)}` : ''}</option>`).join('');
+    if (cur) sel.value = cur;
+  }
+  function setEditionMode(m) {
+    EDMODE = m;
+    document.querySelectorAll('#edModeSeg button').forEach((b) => b.classList.toggle('active', b.dataset.v === m));
+    document.getElementById('edExisting').classList.toggle('hidden', m !== 'existing');
+    document.getElementById('edNew').classList.toggle('hidden', m !== 'new');
+  }
+  function addToEdition(name) { setEditionMode('existing'); fillEditionSelect(name); showTab('upload'); }
+  function validateSlug() {
+    const v = document.getElementById('newSlug').value.trim();
+    const msg = document.getElementById('slugMsg');
+    let err = '';
+    if (v && !/^[\p{L}\p{N}_-]{2,80}$/u.test(v)) err = 'Use letters, digits, "_" or "-" only (no spaces).';
+    else if (v && EDITIONS.some((e) => e.name.toLowerCase() === v.toLowerCase())) err = 'This edition exists already; choose it under "Existing edition".';
+    else if (/(test|demo|sample|_new_ed)/i.test(v)) err = 'Names with test/demo/sample are hidden from the Explorer automatically.';
+    msg.textContent = err; msg.classList.toggle('hidden', !err);
+    return !err || err.startsWith('Names with');
+  }
+  function targetEdition() {
+    if (EDMODE === 'existing') return { edition: document.getElementById('edSelect').value, newEdition: null };
+    return { edition: document.getElementById('newSlug').value.trim(), newEdition: {
+      display_name: document.getElementById('newName').value.trim(), website: document.getElementById('newWeb').value.trim(),
+      description: document.getElementById('newDesc').value.trim() } };
+  }
+
+  const dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('border-sky-400', 'bg-sky-50'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('border-sky-400', 'bg-sky-50'));
+  dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('border-sky-400', 'bg-sky-50'); addFiles(e.dataTransfer.files); });
+  document.getElementById('fileInput').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+
+  function addFiles(files) {
+    for (const f of files) {
+      if (!f.name.toLowerCase().endsWith('.xml')) { toast(`${f.name} is not an .xml file`, true); continue; }
+      if (QUEUE.some((q) => q.file.name === f.name)) continue;
+      QUEUE.push({ file: f, status: 'waiting', result: null, error: null, open: false });
+    }
+    renderQueue();
+  }
+  function clearQueue() { if (!BUSY) { QUEUE = []; renderQueue(); } }
+  function removeItem(i) { if (!BUSY) { QUEUE.splice(i, 1); renderQueue(); } }
+
+  const STATUS_CHIP = {
+    waiting: ['chip', 'waiting'], checking: ['chip chip-sky', 'checking…'], adding: ['chip chip-sky', 'adding…'],
+    preview: ['chip chip-green', 'ready'], added: ['chip chip-green', 'added'], duplicate: ['chip chip-amber', 'already in database'],
+    error: ['chip chip-red', 'error'],
+  };
+
+  function renderQueue() {
+    document.getElementById('queueCount').textContent = QUEUE.length;
+    const box = document.getElementById('queue');
+    const btnDisabled = BUSY || !QUEUE.length || !UPLOAD_OK;
+    document.getElementById('btnCheck').disabled = btnDisabled;
+    document.getElementById('btnAdd').disabled = btnDisabled;
+    if (!QUEUE.length) { box.innerHTML = '<p class="p-6 text-sm text-gray-400">No files yet.</p>'; return; }
+    box.innerHTML = QUEUE.map((q, i) => {
+      const [cls, txt] = STATUS_CHIP[q.status];
+      const r = q.result;
+      const warn = (r?.warnings || []).length;
+      return `
+      <div class="px-4 py-2.5">
+        <div class="flex items-center gap-2">
+          <button class="text-gray-400 text-xs w-3" onclick="QUEUE[${i}].open=!QUEUE[${i}].open; renderQueue()">${r || q.error ? (q.open ? '▾' : '▸') : ''}</button>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm text-gray-800 truncate">${esc(r?.title || q.file.name)}</div>
+            <div class="text-[10px] text-gray-400 font-mono truncate">${esc(q.file.name)} · ${(q.file.size / 1024).toFixed(0)} KB</div>
+          </div>
+          ${warn ? `<span class="chip chip-amber" title="${esc(r.warnings.join('\n'))}">${warn} note${warn > 1 ? 's' : ''}</span>` : ''}
+          <span class="${cls}">${txt}</span>
+          ${r?.document_id && q.status !== 'preview' ? `<a class="text-xs text-sky-600 hover:underline" href="/?doc=${r.document_id}" target="_blank" rel="noopener">Open</a>` : ''}
+          <button class="text-gray-300 hover:text-red-500 text-sm" title="Remove" onclick="removeItem(${i})">×</button>
+        </div>
+        ${q.open ? resultHtml(q) : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function resultHtml(q) {
+    if (q.error) return `<div class="mt-2 ml-5 text-xs text-red-600">${esc(q.error)}</div>`;
+    const r = q.result; if (!r) return '';
+    const d = (k) => r.dates?.[k] ? `${fmtYear(r.dates[k].year)}${r.dates[k].inferred ? ' (approx.)' : ''} <span class="text-gray-400">from ${esc(r.dates[k].source)}</span>` : '<span class="text-gray-400">–</span>';
+    const roles = { creation: 'Creation', publication: 'Publication', contextual: 'In the text', findspot: 'Findspot' };
+    const byRole = {};
+    (r.places || []).filter((p) => p.place_type !== 'placeholder').forEach((p) => { (byRole[p.role] = byRole[p.role] || []).push(p); });
+    const placeHtml = Object.entries(byRole).map(([role, ps]) => `
+      <div><span class="text-gray-500">${roles[role] || role}:</span> ${ps.slice(0, 12).map((p) =>
+        `<span class="chip ${p.located ? 'chip-sky' : ''}" title="${esc(p.place_type || '')} · ${esc(p.source || '')}${p.name !== p.mention ? ' · matched as ' + esc(p.name) : ''}">${esc(p.mention)}${p.cc ? ' · ' + esc(p.cc) : ''}</span>`).join(' ')}${ps.length > 12 ? ` <span class="text-gray-400">+${ps.length - 12}</span>` : ''}</div>`).join('');
+    return `
+      <div class="mt-2 ml-5 text-xs text-gray-700 space-y-1.5">
+        <div class="grid grid-cols-[110px_1fr] gap-y-0.5">
+          <span class="text-gray-500">Creation</span><span>${d('creation')}</span>
+          <span class="text-gray-500">Publication</span><span>${d('publication')}</span>
+          <span class="text-gray-500">In the text</span><span>${d('contextual')}</span>
+          <span class="text-gray-500">Edition date</span><span>${r.edition_date ?? '<span class="text-gray-400">–</span>'}</span>
+          <span class="text-gray-500">Languages</span><span>${(r.languages || []).map((l) => `<span class="chip" title="${esc(l.method)}">${esc(l.name)}${l.share < 1 ? ' ' + Math.round(l.share * 100) + '%' : ''}${l.inferred ? ' · detected' : ''}</span>`).join(' ')}</span>
+          <span class="text-gray-500">Characteristics</span><span>${(r.content_types || []).map((c) => `<span class="chip">${esc(c.replace(/_/g, ' '))}</span>`).join(' ') || '<span class="text-gray-400">–</span>'}</span>
+          <span class="text-gray-500">TEI</span><span>${num(r.tags)} element types, ${num(r.tag_values)} tag values</span>
+        </div>
+        ${placeHtml ? `<div class="space-y-1"><div class="text-gray-500">Places <span class="chip chip-sky">located</span> <span class="chip">no coordinates</span></div>${placeHtml}</div>` : '<div class="text-gray-400">No places found.</div>'}
+        ${(r.warnings || []).map((w) => `<div class="text-amber-800">• ${esc(w)}</div>`).join('')}
+      </div>`;
+  }
+
+  async function runAll(mode) {
+    const { edition, newEdition } = targetEdition();
+    if (!edition) { toast('Choose or name an edition first.', true); return; }
+    if (EDMODE === 'new' && !validateSlug()) { toast('Fix the edition name first.', true); return; }
+    const replace = document.getElementById('replaceExisting').checked;
+    BUSY = true;
+    let created = false;
+    for (const q of QUEUE) {
+      if (mode === 'ingest' && q.status === 'added') continue;
+      q.status = mode === 'preview' ? 'checking' : 'adding'; q.error = null; renderQueue();
+      try {
+        const content = await q.file.text();
+        const r = await post('/api/upload', { filename: q.file.name, content, edition, mode, replace,
+          newEdition: EDMODE === 'new' && !created ? newEdition : null });
+        q.result = r; q.status = r.status;
+        if (r.editionCreated) created = true;
+      } catch (err) {
+        q.status = err.data?.duplicate || err.status === 409 ? 'duplicate' : 'error';
+        q.error = err.message; q.open = true;
+        if (err.data?.title) q.result = err.data;
+      }
+      renderQueue();
+    }
+    BUSY = false; renderQueue();
+    if (mode === 'ingest') {
+      const n = QUEUE.filter((q) => q.status === 'added').length;
+      toast(`${n} document${n === 1 ? '' : 's'} added to ${edition}.`);
+      await loadEditions();
+      if (created) { setEditionMode('existing'); fillEditionSelect(edition); }
+    }
+  }
+
+  async function checkUpload() {
+    try {
+      const a = await api('/api/upload');
+      UPLOAD_OK = a.available;
+      if (!a.available) {
+        const box = document.getElementById('uploadUnavailable');
+        box.textContent = a.reason; box.classList.remove('hidden');
+      }
+    } catch (e) { UPLOAD_OK = false; }
+    renderQueue();
+  }
+
+  loadEditions();
+  checkUpload();
+  if (location.hash === '#add') showTab('upload');
+</script>
+</body>
+</html>

@@ -82,7 +82,9 @@
         class="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center shadow-sm z-[1000] relative shrink-0">
         <div class="flex-1 flex items-center gap-4">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-800">Digital Editions Explorer</h1>
+                </div>
                 <p class="text-sm text-gray-500" id="statsline">Loading data...</p>
             </div>
 
@@ -127,6 +129,15 @@
         </div>
 
         <div class="ml-6 space-x-4 flex items-center">
+            <a href="upload.html" target="_blank"
+                class="text-sm font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75" />
+                </svg>
+                Dataset Curation
+            </a>
             <a href="transparency.html" target="_blank"
                 class="text-sm font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
@@ -138,6 +149,9 @@
             </a>
         </div>
     </header>
+
+    <!-- Search interpretation + active filters: one place for everything that narrows the view -->
+    <div id="filterBar" class="hidden bg-white border-b border-gray-200 px-4 py-1.5 text-xs shrink-0 relative z-[999]"></div>
 
     <!-- Search Message Banner (outside header to avoid stacking context issues) -->
     <div id="searchMessage" class="fixed top-16 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-[9998] hidden">
@@ -192,6 +206,7 @@
                     </a>
                 </div>
                 <div id="langChart" class="chart-container h-56"></div>
+                <p id="langNote" class="hidden text-[11px] text-gray-500 mt-1"></p>
             </div>
 
 
@@ -199,8 +214,8 @@
 
 
 
-            <!-- Topics (Flexible but constrained) -->
-            <div class="flex flex-col min-h-0 shrink-0 overflow-hidden pb-8">
+            <!-- Topics (hidden while SHOW_TOPICS is false) -->
+            <div id="topicsPanel" class="hidden flex-col min-h-0 shrink-0 overflow-hidden pb-8">
                 <h3 class="text-xs font-semibold text-gray-700 uppercase mb-1">Topics</h3>
                 <div id="topicChart"
                     class="flex-1 overflow-y-auto border border-gray-100 rounded p-1 text-xs min-h-[200px]"></div>
@@ -238,7 +253,10 @@
                 <!-- Top Cities Overlay -->
                 <div
                     class="absolute top-4 right-4 w-64 max-h-[60%] bg-white/95 backdrop-blur shadow-xl rounded-lg flex flex-col z-[1000] p-4 border border-gray-200">
-                    <h3 class="text-sm font-bold text-gray-800 uppercase mb-2 border-b pb-2">Places</h3>
+                    <div class="mb-2 border-b pb-2">
+                        <h3 class="text-sm font-bold text-gray-800 uppercase">Places</h3>
+                        <p id="cityListCaption" class="text-[11px] text-gray-500 mt-0.5 leading-snug"></p>
+                    </div>
                     <div id="cityList" class="overflow-y-auto flex-1 text-xs pr-1"></div>
                 </div>
 
@@ -251,14 +269,16 @@
                             class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
                         <button id="btn-geo-pub" onclick="setGeoSource('publication')"
                             class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
-                        <button id="btn-geo-con" onclick="setGeoSource('contextual')"
-                            class="flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                        <button id="btn-geo-con" onclick="setGeoSource('contextual')" title="Places mentioned in the text, not where it was written"
+                            class="flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all">Mentioned</button>
                     </div>
                     <div class="flex items-center gap-2 mb-1"><span
                             class="w-3 h-3 bg-[#0369a1] opacity-80 block"></span> <span id="legend-label">Doc
                             Count</span></div>
                     <div class="flex items-center gap-2"><span
                             class="w-3 h-3 rounded-full border border-blue-600 block"></span> Cities</div>
+                    <div id="legend-geo-match" class="hidden items-center gap-2 mt-1"><span
+                            class="w-3 h-3 rounded-full bg-amber-500 border border-amber-700 block"></span> Matches place filter</div>
                 </div>
             </div>
 
@@ -268,7 +288,10 @@
                 <!-- Timeline -->
                 <div class="flex-1 p-4 border-r border-gray-200 flex flex-col min-h-0">
                     <div class="flex items-center justify-between mb-2 shrink-0">
-                        <h3 class="text-sm font-semibold text-gray-700 uppercase">TIMELINE</h3>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-semibold text-gray-700 uppercase">TIMELINE</h3>
+                            <div id="activeYearBadge" class="hidden"></div>
+                        </div>
                         <div class="flex items-center gap-4">
                             <!-- Segmented Toggle -->
                             <div class="flex bg-gray-100 p-0.5 rounded-md text-[10px] font-medium items-center">
@@ -276,8 +299,8 @@
                                     class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
                                 <button id="btn-date-pub" onclick="setDateSource('publication')"
                                     class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
-                                <button id="btn-date-con" onclick="setDateSource('contextual')"
-                                    class="px-3 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                                <button id="btn-date-con" onclick="setDateSource('contextual')" title="Years mentioned in the text (most frequent year per document), not creation years"
+                                    class="px-3 py-1 rounded shadow bg-white text-gray-800 transition-all">Mentioned</button>
                             </div>
                             <a href="transparency.html" target="_blank" class="text-gray-400 hover:text-blue-600"
                                 title="Methodology">
@@ -299,12 +322,33 @@
     </div>
 
     <!-- Dynamic Filter Modal -->
+    <div id="saveTagModal" class="hidden fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center" onclick="closeSaveSearchTag()">
+        <div class="bg-white rounded-lg shadow-xl w-[26rem] flex flex-col p-4 text-sm" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center border-b pb-2 mb-3">
+                <h3 class="font-bold text-gray-700">Save search as a tag</h3>
+                <button onclick="closeSaveSearchTag()" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <label class="text-xs font-medium text-gray-500 mb-1">Tag name</label>
+            <input type="text" id="saveTagName" class="w-full border rounded px-3 py-1.5 mb-3 focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <div class="text-xs text-gray-500 mb-1">Documents that contain</div>
+            <div id="saveTagWhat" class="text-xs font-mono text-gray-800 bg-gray-50 border rounded px-2 py-1.5 mb-2"></div>
+            <label id="saveTagAuthorsRow" class="flex items-center gap-2 text-xs text-gray-700 mb-2">
+                <input type="checkbox" id="saveTagAuthors" class="accent-gray-600"> also documents written or signed by them (&lt;author&gt;, &lt;signed&gt;)
+            </label>
+            <p class="text-[11px] text-gray-400 mb-3">Only names the editors tagged are found, not untagged mentions in the running text. The tag is saved in the database and shown to everyone using it.</p>
+            <div class="flex justify-end gap-2 pt-2 border-t">
+                <button onclick="closeSaveSearchTag()" class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">Cancel</button>
+                <button onclick="confirmSaveSearchTag()" class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Save tag</button>
+            </div>
+        </div>
+    </div>
+
     <div id="filterModal" class="hidden fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center"
         onclick="closeAddFilterModal()">
         <div class="bg-white rounded-lg shadow-xl w-[26rem] max-h-[80vh] flex flex-col p-4"
             onclick="event.stopPropagation()">
             <div class="flex justify-between items-center border-b pb-2 mb-3">
-                <h3 class="font-bold text-gray-700">Add Custom Tag Filter</h3>
+                <h3 class="font-bold text-gray-700">Add a custom tag</h3>
                 <button onclick="closeAddFilterModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <!-- Custom filter name -->
@@ -317,418 +361,314 @@
                 class="w-full border rounded px-3 py-1.5 mb-2 text-sm" onkeyup="renderTagList()">
             <!-- Tag list (checkboxes) -->
             <div id="tagList" class="flex-1 overflow-y-auto space-y-0.5 text-sm mb-3"></div>
+            <!-- Optional: only where the element's text contains ... -->
+            <label class="text-xs font-medium text-gray-500 mb-1">…whose text contains (optional)</label>
+            <input type="text" id="filterValue" placeholder="e.g. Van Gogh (leave empty: the element just has to be present)"
+                class="w-full border rounded px-3 py-1.5 mb-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <p class="text-[11px] text-gray-400 mb-3">Matched in the text of the tagged elements (case-insensitive), not in the running text. The tag is saved and shown to everyone using this database.</p>
             <!-- Footer -->
             <div class="flex justify-end gap-2 pt-2 border-t">
                 <button onclick="closeAddFilterModal()"
                     class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">Cancel</button>
                 <button onclick="confirmAddFilter()"
-                    class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Add Filter</button>
+                    class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Save tag</button>
             </div>
         </div>
     </div>
 
     <script>
         // --- Dynamic Filter Logic ---
+        // Tags now live in SQL (tags / document_tags, see db/001_add_tags.sql).
+        // The modal queries /api/tags; matching happens server-side in
+        // /api/dashboard, driven by the customFilters payload.
+
         function showAddFilterModal() {
             document.getElementById('filterModal').classList.remove('hidden');
             document.getElementById('filterCustomName').value = '';
             document.getElementById('tagSearch').value = '';
+            document.getElementById('filterValue').value = '';
+            SELECTED_TAGS.clear();
             renderTagList();
         }
         function closeAddFilterModal() {
             document.getElementById('filterModal').classList.add('hidden');
         }
 
-        function confirmAddFilter() {
-            // Collect checked tags
-            const checked = [...document.querySelectorAll('#tagList input[type=checkbox]:checked')];
-            if (checked.length === 0) return;
-            const tags = checked.map(cb => cb.value);
+        async function confirmAddFilter() {
+            const tags = [...SELECTED_TAGS];
+            if (tags.length === 0) return;
+            const value = (document.getElementById('filterValue').value || '').trim();
 
             // Determine filter display name
             let name = (document.getElementById('filterCustomName').value || '').trim();
-            if (!name) name = tags.length === 1 ? tags[0] : tags.join(' + ');
+            if (!name) name = value ? `${tags.join(' / ')} contains “${value}”` : (tags.length === 1 ? tags[0] : tags.join(' + '));
 
-            // Sanitise name as a key (keep raw name for display)
-            const key = '__custom__' + name;
-
-            // Skip if already present
-            if (DYNAMIC_FEATURES.has(key)) { closeAddFilterModal(); return; }
-            DYNAMIC_FEATURES.add(key);
-
-            // Inject into RAW_DATA: doc qualifies if ANY of the selected tags is present
-            tags.forEach(tag => {
-                const docsWithTagIndices = new Set(TAG_PRESENCE[tag] || []);
-                RAW_DATA.forEach(d => {
-                    let match = d.tagIdxs.some(idx => docsWithTagIndices.has(idx));
-                    if (match) d.features[key] = true;
-                });
-            });
-
-            // Store metadata so it can be displayed/removed nicely
-            DYNAMIC_FILTER_META[key] = { label: name, tags };
-
+            const definition = value ? { tags: [], values: [{ tags, value }] } : { tags, values: [] };
             closeAddFilterModal();
+            await saveCustomTag(name, definition, null);
+        }
+
+        // --- Saved custom tags (api/custom_tags.js) ---------------------------------------
+        // A saved tag is a characteristic like the built-in ones: stored in the database with the
+        // documents it matches, listed under Characteristics, usable as a Y/N filter.
+        async function loadSavedTags() {
+            try {
+                const res = await fetch('/api/custom_tags');
+                const data = await res.json();
+                (data.tags || []).forEach(t => {
+                    DYNAMIC_FEATURES.add(t.key);
+                    DYNAMIC_FILTER_META[t.key] = { label: t.label, tags: t.definition.tags || [], values: t.definition.values || [],
+                                                   saved: true, sourceQuery: t.source_query };
+                });
+            } catch (e) { console.warn('Saved tags unavailable:', e.message); }
+        }
+
+        async function saveCustomTag(label, definition, sourceQuery) {
+            try {
+                const res = await fetch('/api/custom_tags', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create', label, definition, sourceQuery })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Saving failed');
+                DYNAMIC_FEATURES.add(data.key);
+                DYNAMIC_FILTER_META[data.key] = { label: data.label, tags: data.definition.tags, values: data.definition.values,
+                                                  saved: true, sourceQuery };
+                notify(`Saved “${data.label}”: ${data.doc_count.toLocaleString()} documents. It is listed under Characteristics.`);
+            } catch (err) {
+                // No write access to the database: keep it for this session only (structural tags only).
+                if (!definition.values.length) {
+                    const key = CUSTOM_PREFIX + label;
+                    DYNAMIC_FEATURES.add(key);
+                    DYNAMIC_FILTER_META[key] = { label, tags: definition.tags };
+                    notify(`Could not save the tag (${err.message}); it is kept for this session only.`, true);
+                } else {
+                    notify(`Could not save the tag: ${err.message}`, true);
+                }
+            }
             updateDashboard();
         }
 
-        function removeDynamicFeature(key) {
+        function notify(msg, isError = false) {
+            let el = document.getElementById('appToast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'appToast';
+                el.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2 rounded shadow-lg text-sm';
+                document.body.appendChild(el);
+            }
+            el.className = `fixed bottom-4 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2 rounded shadow-lg text-sm ${isError ? 'bg-rose-600 text-white' : 'bg-gray-800 text-white'}`;
+            el.textContent = msg;
+            el.style.display = 'block';
+            clearTimeout(el._t);
+            el._t = setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        // "Save as tag" from a search such as "documents mentioning Van Gogh": the search's element
+        // values become a saved tag. Persons are looked up in persName, rs and name (the Van Gogh
+        // letters tag people as <rs type="pers">); author/signed only if asked for.
+        const VALUE_ELEMENTS = {
+            persName: ['persName', 'rs', 'name'], placeName: ['placeName', 'rs', 'name'],
+            orgName: ['orgName', 'rs', 'name'], term: ['term', 'gloss', 'rs', 'name'], title: ['title', 'head', 'bibl'],
+        };
+        function searchTagValues() {
+            return (FILTERS.tagValues || []).filter(tv => tv && tv.value && tv.value !== 'true' && tv.value !== true);
+        }
+        function openSaveSearchTag() {
+            const tvs = searchTagValues();
+            if (!tvs.length) return;
+            const values = [...new Set(tvs.map(tv => String(tv.value)))];
+            const isPerson = tvs.some(tv => tv.tag === 'persName');
+            document.getElementById('saveTagName').value = `Mentions ${values.join(' / ')}`;
+            document.getElementById('saveTagWhat').textContent = tvs.map(tv =>
+                `“${tv.value}” in ${(VALUE_ELEMENTS[tv.tag] || [tv.tag]).map(t => '<' + t + '>').join(', ')}`).join('; ');
+            document.getElementById('saveTagAuthorsRow').classList.toggle('hidden', !isPerson);
+            document.getElementById('saveTagAuthors').checked = false;
+            document.getElementById('saveTagModal').classList.remove('hidden');
+        }
+        function closeSaveSearchTag() { document.getElementById('saveTagModal').classList.add('hidden'); }
+        async function confirmSaveSearchTag() {
+            const label = document.getElementById('saveTagName').value.trim();
+            if (!label) return;
+            const withAuthors = document.getElementById('saveTagAuthors').checked;
+            const values = searchTagValues().map(tv => ({
+                tags: [...(VALUE_ELEMENTS[tv.tag] || [tv.tag]), ...(withAuthors && tv.tag === 'persName' ? ['author', 'signed'] : [])],
+                value: String(tv.value),
+            }));
+            closeSaveSearchTag();
+            await saveCustomTag(label, { tags: [], values }, LAST_SEARCH ? LAST_SEARCH.query : null);
+        }
+
+        async function removeDynamicFeature(key) {
             if (!DYNAMIC_FEATURES.has(key)) return;
+            const meta = DYNAMIC_FILTER_META[key] || {};
+            if (meta.saved) {
+                if (!window.confirm(`Delete the saved tag “${meta.label}”? It is removed for everyone using this database.`)) return;
+                try {
+                    const res = await fetch('/api/custom_tags', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                  body: JSON.stringify({ action: 'delete', key }) });
+                    if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+                } catch (err) { notify(`Could not delete the tag: ${err.message}`, true); return; }
+            }
             DYNAMIC_FEATURES.delete(key);
             delete DYNAMIC_FILTER_META[key];
 
             if (FILTERS.feature && FILTERS.feature.key === key) {
                 FILTERS.feature = null;
             }
-
-            RAW_DATA.forEach(d => { delete d.features[key]; });
             updateDashboard();
         }
 
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
+
+        let tagSearchTimer = null;
+        // Called from the search box's onkeyup. Debounced so typing doesn't
+        // fire a query per keystroke.
         function renderTagList() {
+            clearTimeout(tagSearchTimer);
+            tagSearchTimer = setTimeout(fetchAndRenderTagList, 200);
+        }
+
+        async function fetchAndRenderTagList() {
             const list = document.getElementById('tagList');
             const searchInput = document.getElementById('tagSearch');
-            const search = searchInput ? searchInput.value.toLowerCase() : '';
+            const search = searchInput ? searchInput.value.trim() : '';
+
+            list.innerHTML = '<div class="text-xs text-gray-400 px-2 py-1">Loading tags…</div>';
+
+            let tags;
+            try {
+                const res = await fetch(`/api/tags?limit=500&search=${encodeURIComponent(search)}`);
+                const payload = await res.json();
+                if (!res.ok) throw new Error(payload.error || 'Request failed');
+                tags = payload.tags || [];
+            } catch (err) {
+                console.error('Could not load tags', err);
+                list.innerHTML =
+                    `<div class="text-xs text-rose-500 px-2 py-1">Could not load tags: ${escapeHtml(err.message)}</div>`;
+                return;
+            }
+
             list.innerHTML = '';
+            if (tags.length === 0) {
+                list.innerHTML = '<div class="text-xs text-gray-400 px-2 py-1">No matching tags.</div>';
+                return;
+            }
 
-            if (!TAG_PRESENCE) return;
-
-            Object.keys(TAG_PRESENCE).sort().forEach(tag => {
-                if (search && !tag.toLowerCase().includes(search)) return;
-                const count = TAG_PRESENCE[tag].length;
-
+            tags.forEach(({ name, doc_count }) => {
                 const label = document.createElement('label');
                 label.className = 'flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer';
                 label.innerHTML =
-                    `<input type="checkbox" value="${tag}" class="accent-gray-600 shrink-0">`
-                    + `<span class="font-mono text-xs text-gray-700 flex-1">&lt;${tag}&gt;</span>`
-                    + `<span class="text-xs text-gray-400">${count.toLocaleString()}</span>`;
+                    `<input type="checkbox" class="accent-gray-600 shrink-0"${SELECTED_TAGS.has(name) ? ' checked' : ''}>`
+                    + `<span class="font-mono text-xs text-gray-700 flex-1">&lt;${escapeHtml(name)}&gt;</span>`
+                    + `<span class="text-xs text-gray-400">${(doc_count || 0).toLocaleString()}</span>`;
+                // Selection is tracked outside the DOM so it survives re-renders
+                // when the user narrows the search.
+                label.querySelector('input').addEventListener('change', (e) => {
+                    if (e.target.checked) SELECTED_TAGS.add(name);
+                    else SELECTED_TAGS.delete(name);
+                });
                 list.appendChild(label);
             });
         }
     </script>
     <script>
-        // State
-        let RAW_DATA = [];
-        let FILTERED_DATA = [];
+        // --- Global State ---
+        // All aggregation happens server-side in /api/dashboard. The client
+        // holds filter state, the topic hierarchy, and edition metadata only.
+        const CUSTOM_PREFIX = '__custom__';
+
         let VIEW_MODE = 'document'; // 'document' | 'edition'
         let FILTERS = {
             lang: null,
             country: null,
-            city: null, // New City Filter
+            city: null,
+            place: null,
             yearRange: null,
-            gender: null,
-            doc_type: null,
-            feature: null, // New Filter
-            includeInferredDate: true,
-            dateSource: 'contextual', // 'creation', 'publication' or 'contextual'
-            geoSource: 'contextual', // 'creation', 'publication' or 'contextual'
-            topicId: null
+            feature: null,              // { key, value } - built-in attribute or __custom__ tag filter
+            topicId: null,
+            dateSource: 'contextual',   // 'creation' | 'publication' | 'contextual'
+            geoSource: 'contextual'     // 'creation' | 'publication' | 'contextual'
         };
-        let EDITION_METADATA = {}; // Map<EditionID, Array<Features>>
-        let EDITION_TOPICS = {};
-        let DOCUMENT_TOPICS = {};
+        let ALL_FEATURES = [];
+        const DB_LANGUAGE_NAMES = {};
+        let EDITION_METADATA = {};
         let TOPIC_HIERARCHY = [];
-        let TAG_PRESENCE = {}; // Loaded dynamically (indices)
-        let FILE_INDEX = [];   // Loaded dynamically (filenames)
-        let DYNAMIC_FEATURES = new Set(); // Tags/compound filters added by user
-        let DYNAMIC_FILTER_META = {}; // key -> { label, tags } for compound filters
-        let CITY_COUNTRY_MAPPING = {}; // City → Country name, loaded from city_country_mapping.json
-        let SHOW_CONTEXTUAL = true; // Toggle for Contextual date bars
+        let DYNAMIC_FEATURES = new Set();
+        let DYNAMIC_FILTER_META = {};   // key -> { label, tags }
+        let SELECTED_TAGS = new Set();  // checkbox state inside the tag modal
+        let SHOW_CONTEXTUAL = true;
 
-        let cityLayer;
+        // Leaflet handles
         let map;
-        let VALID_COUNTRIES = new Set();
-        let CITY_COORDS = {};
-        let CITY_UNIFICATION = {};
         let cityClusters;
 
-        // --- Helpers ---
-        function parseYears(val) {
-            if (!val) return [];
-            val = val.toString().trim();
-
-            // 1. Handle comma-separated lists (e.g. "1850, 1852")
-            if (val.includes(',')) {
-                return val.split(',').map(p => parseYears(p)).flat();
-            }
-
-            // 2. Handle ranges "from — to" (em-dash), en-dash, hyphen
-            const parts = val.split(/[—–-]/);
-            if (parts.length === 2) {
-                const start = parseInt(parts[0]);
-                const end = parseInt(parts[1]);
-                if (!isNaN(start) && !isNaN(end)) {
-                    const range = [];
-                    for (let y = start; y <= end; y++) range.push(y);
-                    return range;
-                }
-            }
-            const single = parseInt(val);
-            return isNaN(single) ? [] : [single];
+        /** Tag lists for every active custom filter, sent with each request. */
+        function customFilterPayload() {
+            return [...DYNAMIC_FEATURES]
+                .filter(key => DYNAMIC_FILTER_META[key])
+                .map(key => ({ key, tags: DYNAMIC_FILTER_META[key].tags }));
         }
 
         // Load Data
         const t = Date.now();
         Promise.all([
-            d3.json(`dashboard_data_optimized.json?v=${t}`),
-            d3.json(`dashboard_editions.json?v=${t}`),
-            d3.json(`city_coordinates_v2.json?v=${t}`).catch(() => ({})),
-            d3.json(`topics_hierarchy.json?v=${t}`),
-            d3.json(`edition_topics.json?v=${t}`),
-            d3.json(`document_topics.json?v=${t}`).catch(() => ({})),
-            d3.json(`tag_presence_optimized.json?v=${t}`).catch(() => ({})),
-            d3.json(`file_index.json?v=${t}`).catch(() => ([])),
-            d3.json(`city_country_mapping.json?v=${t}`).catch(() => ({})),
-            d3.json(`city_unification.json?v=${t}`).catch(() => ({}))
-        ]).then(([docsData, edsMeta, geoData, topicRes, editionTopics, docTopics, tagPresence, fileIndex, geoMapping, cityUnification]) => {
-
-            // Extract valid countries from GeoJSON
-            if (geoData && geoData.features) {
-                geoData.features.forEach(f => {
-                    if (f.properties && f.properties.name) {
-                        VALID_COUNTRIES.add(f.properties.name);
-                    }
-                });
-            }
-            console.log("Valid Countries loaded:", VALID_COUNTRIES.size);
-            CITY_COORDS = geoData || {};
-
-            EDITION_TOPICS = editionTopics;
-            DOCUMENT_TOPICS = docTopics;
-            TOPIC_HIERARCHY = topicRes;
-            TAG_PRESENCE = tagPresence;
-            FILE_INDEX = fileIndex;
-            EDITION_METADATA = edsMeta;
-            CITY_COUNTRY_MAPPING = geoMapping || {};
-            CITY_UNIFICATION = cityUnification || {};
-
-            // DEBUG: Check mapping
-            console.log("Mapping Check 'Zürich':", CITY_COUNTRY_MAPPING["Zürich"]);
-            console.log("Mapping Check 'Zurich':", CITY_COUNTRY_MAPPING["Zurich"]);
-
-            // Helper to ensure array
-            function toArray(val) {
-                if (!val) return [];
-                if (Array.isArray(val)) return val;
-
-                // Handle "BC" explicitly (e.g. "500 BC" -> -500)
-                if (typeof val === 'string' && /bc/i.test(val)) {
-                    const num = parseInt(val.replace(/[^0-9]/g, ''));
-                    if (!isNaN(num)) return [-num];
+            fetch('/api/dashboard').then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => {
+                        throw new Error(err.error || err.message || `HTTP error ${res.status}`);
+                    });
                 }
-                if (typeof val === 'string' && val.includes('-')) {
-                    const parts = val.split('-');
-                    const s = parseInt(parts[0]);
-                    const e = parseInt(parts[1]);
-                    if (!isNaN(s) && !isNaN(e)) {
-                        const r = [];
-                        for (let i = s; i <= e; i++) r.push(i);
-                        return r;
-                    }
-                }
-                return [val];
+                return res.json();
+            }),
+            d3.json(`topics_hierarchy.json?v=${t}`).catch(err => {
+                console.warn("topics_hierarchy.json fallback to dbMeta:", err);
+                return null;
+            }),
+            fetch(`/api/info?v=${t}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ]).then(async ([dbMeta, topicRes, serverInfo]) => {
+            // Missing migrations are logged for developers; /api/info has details.
+            const missingTables = serverInfo?.database?.missingTables || [];
+            if (missingTables.length) {
+                console.warn('Database is missing tables (some filters are skipped):', missingTables.map(m => m.table).join(', '));
             }
 
-            const COUNTRY_MAP = {
-                "AT": "Austria", "DE": "Germany", "CH": "Switzerland", "FR": "France",
-                "IT": "Italy", "BE": "Belgium", "NL": "Netherlands", "GB": "United Kingdom",
-                "UK": "United Kingdom", "US": "United States of America", "USA": "United States of America",
-                "ES": "Spain", "PT": "Portugal", "PL": "Poland", "CZ": "Czech Republic",
-                "HU": "Hungary", "SI": "Slovenia", "HR": "Croatia", "GR": "Greece",
-                "RU": "Russia", "JP": "Japan", "CN": "China", "TR": "Turkey",
-                "EG": "Egypt", "MX": "Mexico", "SK": "Slovakia",
-                "Nebraska": "United States of America",
-                "Massachusetts": "United States of America",
-                "California": "United States of America",
-                "New York": "United States of America",
-                "Pennsylvania": "United States of America",
-                "Virginia": "United States of America",
-                "Illinois": "United States of America",
-                "Ohio": "United States of America"
-            };
-            const countryNames = Object.values(COUNTRY_MAP);
+            // Language names from the database (after patch_database.py), for codes
+            // the built-in LANGUAGE_NAMES map doesn't know (e.g. 'und').
+            (dbMeta.languages || []).forEach(l => {
+                if (l.iso_code && l.name && l.name !== l.iso_code) DB_LANGUAGE_NAMES[l.iso_code] = l.name;
+            });
+            // Topics are shown only from a v2 build, whose models passed the quality gates; the static
+            // topics_hierarchy.json (old near-uniform model) is used for nothing else any more.
+            SHOW_TOPICS = dbMeta.topicsEvaluated === true;
+            TOPIC_HIERARCHY = SHOW_TOPICS
+                ? dbMeta.topics.map(t => ({ ...t, name: `${t.name} (${languageLabel(t.lang)})` }))
+                : [];
+            ALL_FEATURES = dbMeta.features || [];
 
-            // Helper to clean place strings
-            function resolvePlace(p) {
-                if (!p) return { city: null, country: null };
-
-                // Skip known TEI label strings and "Unknown Place" indicators
-                const PLACE_BLOCKLIST = new Set([
-                    "Findspot.", "Findspot", "findspot",
-                    "Unknown", "unknown", "unspecified",
-                    "o.O.", "o.O", "o. O.", "[o.O.]", "[o. O.]",
-                    "s.l.", "sine loco", "no place", "Unknown."
-                ]);
-                if (PLACE_BLOCKLIST.has(p.trim())) return { city: null, country: null };
-
-                // Strip surrounding noise: brackets, parens, quotes, trailing punctuation
-                p = p.trim().replace(/^[\(\[\\'"]+|[\)\]\\'":,;.\?]+$/g, '').trim();
-
-                let candidateCity = null;
-                let candidateCountry = null;
-
-                // Check if it's "City, Country" or "City, State"
-                if (p.includes(',')) {
-                    const parts = p.split(',').map(s => s.trim());
-                    // Assume last part is Country or State
-                    const potentialCountry = parts[parts.length - 1];
-                    const potentialCity = parts[0]; // Take first part as city
-
-                    if (countryNames.includes(potentialCountry)) {
-                        candidateCountry = potentialCountry;
-                    } else if (COUNTRY_MAP[potentialCountry]) {
-                        candidateCountry = COUNTRY_MAP[potentialCountry];
-                    }
-
-                    candidateCity = potentialCity;
-                } else {
-                    // Single string
-                    if (countryNames.includes(p)) {
-                        candidateCountry = p;
-                    } else if (COUNTRY_MAP[p]) {
-                        candidateCountry = COUNTRY_MAP[p];
-                    } else {
-                        candidateCity = p;
-                    }
-                }
-
-                const resolved = { city: candidateCity, country: candidateCountry };
-                if (resolved.city) {
-                    resolved.city = CITY_UNIFICATION[resolved.city] || resolved.city;
-                }
-                return resolved;
-            }
-
-            // Create mapping for fast tag index lookups
-            const tagFileToIndex = new Map();
-            FILE_INDEX.forEach((f, i) => tagFileToIndex.set(f, i));
-
-            // Process RAW_DATA from Document Metadata
-            const cols = docsData.columns;
-            const dicts = docsData.dictionaries;
-            const numDocs = cols.id.length;
-
-            RAW_DATA = [];
-            for (let i = 0; i < numDocs; i++) {
-                const d_raw = {
-                    id: cols.id[i],
-                    ed_id: dicts.ed_id[cols.ed_id[i]],
-                    title: cols.title[i],
-                    date_cre: cols.date_cre[i],
-                    date_cre_inf: cols.date_cre_inf[i],
-                    date_pub: cols.date_pub[i],
-                    date_pub_inf: cols.date_pub_inf[i],
-                    date_con: cols.date_con[i],
-                    date_con_inf: cols.date_con_inf[i],
-                    lang: dicts.lang[cols.lang[i]],
-                    lang_inf: cols.lang_inf[i],
-                    geo_cre: cols.geo_cre[i],
-                    geo_pub: cols.geo_pub[i],
-                    geo_con: cols.geo_con[i],
-                    features: cols.features[i]
-                };
-
-                // Geo Resolution
-                function extractGeo(geoArray) {
-                    let country = null;
-                    let city = null;
-                    for (const p of (geoArray || [])) {
-                        const resolved = resolvePlace(p);
-                        if (resolved.country && !country) country = resolved.country;
-                        if (resolved.city && !city) city = resolved.city;
-                        if (country && city) break;
-                    }
-                    return { country, city };
-                }
-
-                const geoCre = extractGeo(d_raw.geo_cre);
-                const geoPub = extractGeo(d_raw.geo_pub);
-                const geoCtx = extractGeo(d_raw.geo_con);
-
-                // Pre-calculate tag indices for this doc
-                const tagIdxs = [];
-                const fullIdx = tagFileToIndex.get(d_raw.id);
-                if (fullIdx !== undefined) tagIdxs.push(fullIdx);
-                const baseIdx = tagFileToIndex.get(d_raw.id.split('/').pop());
-                if (baseIdx !== undefined && baseIdx !== fullIdx) tagIdxs.push(baseIdx);
-
-                RAW_DATA.push({
-                    id: d_raw.id,
-                    filename: d_raw.id.split('/').pop(),
-                    edition: d_raw.ed_id,
-                    title: d_raw.title,
-                    lang: d_raw.lang || "unknown",
-                    langInferred: d_raw.lang_inf || false,
-
-                    geo_creation: geoCre,
-                    geo_publication: geoPub,
-                    geo_contextual: geoCtx,
-
-                    get country() { return this['geo_' + FILTERS.geoSource].country; },
-                    get city() { return this['geo_' + FILTERS.geoSource].city; },
-                    countryInferred: false,
-                    cityInferred: false,
-
-                    years_creation: toArray(d_raw.date_cre),
-                    years_publication: toArray(d_raw.date_pub),
-                    years_contextual: toArray(d_raw.date_con),
-
-                    get years() { return this['years_' + FILTERS.dateSource]; },
-                    get contextualYears() { return []; },
-
-                    yearInferred: d_raw.date_pub_inf || false,
-                    contextualInferred: false,
-                    features: d_raw.features || {},
-                    tagIdxs: tagIdxs,
-                    // extra for filters
-                    gender: null,
-                    doc_type: null
-                });
-            }
-
-            FILTERED_DATA = RAW_DATA;
-
-            // COMPUTE TOTAL COUNTS FOR TOPICS (for stable sorting)
-            // If Document Mode, use document counts. If Edition Mode, use edition counts.
-            // Since we want a stable global hierarchy order, let's sum BOTH or pick one.
-            // Let's us Document Counts as primary if available, else editions.
-            const topicTotalCounts = new Map();
-
-            // Use Doc Topics for Total Counts if loaded
-            if (Object.keys(DOCUMENT_TOPICS).length > 0) {
-                Object.values(DOCUMENT_TOPICS).forEach(tInfo => {
-                    const tid = tInfo.topic_id;
-                    if (tid) topicTotalCounts.set(tid, (topicTotalCounts.get(tid) || 0) + 1);
-                });
-            } else {
-                // Fallback to Edition Topics
-                Object.values(EDITION_TOPICS).forEach(edTopics => {
-                    for (const [topicId, count] of Object.entries(edTopics)) {
-                        if (count > 0) {
-                            topicTotalCounts.set(topicId, (topicTotalCounts.get(topicId) || 0) + count);
-                        }
-                    }
-                });
-            }
-
-            // Attach total_count to each topic in hierarchy
-            function attachCounts(topics) {
-                topics.forEach(t => {
-                    t.total_count = topicTotalCounts.get(t.id) || 0;
-                    if (t.subtopics && t.subtopics.length > 0) {
-                        attachCounts(t.subtopics);
-                    }
-                });
-            }
-            attachCounts(TOPIC_HIERARCHY);
+            // Set up editions metadata
+            EDITION_METADATA = {};
+            (dbMeta.editions || []).forEach(ed => {
+                EDITION_METADATA[ed.name] = ed;
+            });
 
             initMap();
-            renderTopicHierarchy(topicRes);
+            await loadSavedTags();
+            if (SHOW_TOPICS) {
+                document.getElementById('topicsPanel').classList.replace('hidden', 'flex');
+                renderTopicHierarchy(TOPIC_HIERARCHY);
+            }
             updateDashboard();
+            // /?doc=<id> opens a document directly (links from the curation page)
+            const deepDoc = new URLSearchParams(window.location.search).get('doc');
+            if (deepDoc && /^\d+$/.test(deepDoc)) openDocumentReader(parseInt(deepDoc, 10));
         }).catch(err => {
-            console.error(err);
-            document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data.<br>${err}</div>`;
+            console.error("Error loading data:", err);
+            document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data from SQL database.<br>${err}</div>`;
         });
 
         // --- Core Logic ---
@@ -753,6 +693,23 @@
             updateDashboard();
         }
 
+        function clearYearFilter(e) {
+            if (e) e.stopPropagation();
+            FILTERS.yearRange = null;
+            updateDashboard();
+        }
+
+        // Switch the timeline's date layer without clearing the range or reloading (used by search).
+        function selectDateSource(source) {
+            if (!['creation', 'publication', 'contextual'].includes(source)) return;
+            FILTERS.dateSource = source;
+            ['cre', 'pub', 'con'].forEach(k => {
+                document.getElementById(`btn-date-${k}`).className = source.startsWith(k.slice(0, 3))
+                    ? "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all"
+                    : "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            });
+        }
+
         function setDateSource(source) {
             FILTERS.dateSource = source;
             FILTERS.yearRange = null; // Reset year filter when switching axes
@@ -766,7 +723,10 @@
             updateDashboard();
         }
 
-        function setGeoSource(source) {
+        const GEO_SOURCE_LABELS = { creation: 'creation places', publication: 'publication places', contextual: 'places mentioned in the text' };
+
+        function setGeoSource(source, refresh = true) {
+            if (!GEO_SOURCE_LABELS[source]) return;
             FILTERS.geoSource = source;
             document.getElementById('btn-geo-cre').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
             document.getElementById('btn-geo-pub').className = "flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700";
@@ -775,280 +735,91 @@
             const btnId = `btn-geo-${source.substring(0, 3)}`;
             document.getElementById(btnId).className = "flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all";
 
-            updateDashboard();
+            if (refresh) updateDashboard();
         }
 
-        function updateDashboard() {
+        async function updateDashboard() {
+            document.getElementById('statsline').innerHTML = "Loading data from database...";
 
-            // Function to check filters
-            const check = (d, skip = null) => {
-                if (skip !== 'lang' && FILTERS.lang && d.lang !== FILTERS.lang) return false;
-                if (skip !== 'country' && FILTERS.country && d.country !== FILTERS.country) return false;
-                if (skip !== 'city' && FILTERS.city && d.city !== FILTERS.city) return false;
-                if (skip !== 'gender' && FILTERS.gender && (!d.gender || !d.gender.includes(FILTERS.gender))) return false;
-                if (skip !== 'doc_type' && FILTERS.doc_type && d.doc_type !== FILTERS.doc_type) return false;
+            try {
+                const res = await fetch('/api/dashboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filters: FILTERS,
+                        viewMode: VIEW_MODE,
+                        customFilters: customFilterPayload()
+                    })
+                });
 
-                // Feature Filter (Dual State; also supports compound multi-tag custom filters)
-                if (skip !== 'feature' && FILTERS.feature) {
-                    const { key, value } = FILTERS.feature;
-                    const isTrue = d.features && d.features[key];
-                    // If we want True, and it's not True -> False
-                    if (value === true && !isTrue) return false;
-                    // If we want False, and it IS True -> False
-                    if (value === false && isTrue) return false;
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Dashboard API returned an error');
+                if (Array.isArray(data.warnings) && data.warnings.length) {
+                    console.warn('Dashboard filters skipped:', data.warnings);
                 }
 
-                // Topic Filter
-                if (skip !== 'topic' && FILTERS.topicId) {
-                    const tid = FILTERS.topicId;
-                    if (VIEW_MODE === 'document') {
-                        // Document Mode: Check DOCUMENT_TOPICS
-                        const docTopic = DOCUMENT_TOPICS[d.filename];
+                renderStatsLine(data.totalDocs, data.totalEditions);
+                LAST_TOTAL = (VIEW_MODE === 'document') ? data.totalDocs : data.totalEditions;
+                renderFilterBar();
+                renderLangChart(data.langs);
+                renderLangNote(data.langsUnassigned);
+                LAST_CITIES = data.cities || {};
+                renderCityList(data.cities);
 
-                        // For simplicity: Check Direct Match
-                        if (!docTopic || docTopic.topic_id !== tid) return false;
-                    } else {
-                        // Edition Mode: Check EDITION_TOPICS
-                        const topics = EDITION_TOPICS[d.edition];
-                        if (!topics || !topics[tid]) return false;
-                    }
-                }
+                const totalCount = (VIEW_MODE === 'document') ? data.totalDocs : data.totalEditions;
+                renderFeatureChart(data.features, totalCount);
+                renderTimeChart(data.years);
+                updateMap(data.cities);
+                renderEditionList(new Set(data.editions));
 
-                // Year Range Filter (Brush)
-                if (skip !== 'year' && FILTERS.yearRange) {
-                    const [start, end] = FILTERS.yearRange;
-                    if (!d.years || d.years.length === 0) return false;
-                    const hasOverlap = d.years.some(y => y >= start && y <= end);
-                    if (!hasOverlap) return false;
-                }
-
-                return true;
-            };
-
-            // Main Data (Applies ALL filters)
-            FILTERED_DATA = RAW_DATA.filter(d => check(d));
-
-            // Lang Data (Applies all EXCEPT Lang) - FOR LANG CHART ONLY
-            const LANG_DATA = RAW_DATA.filter(d => check(d, 'lang'));
-
-            // Feature Data (Applies all EXCEPT Feature) - FOR FEATURE CHART ONLY
-            const FEATURE_DATA = RAW_DATA.filter(d => check(d, 'feature'));
-
-
-            // --- Aggregation Helper ---
-            const mode = VIEW_MODE;
-            const initStatObj = () => ({ total: 0, confirmed: 0, inferred: 0 });
-
-            // We need 3 Stats Objects: Main, Lang, Feature
-
-            function computeStats(dataSet, options = {}) {
-                const s = {
-                    langs: {},
-                    countries: {},
-                    cities: {},
-                    genders: {},
-                    years: {},
-                    features: {},
-                    editions: new Set(),
-                    is_letter: 0
+                // Save subset data for inspector modal
+                CURRENT_SUBSET_DATA = {
+                    totalDocs: data.totalDocs,
+                    totalEditions: data.totalEditions,
+                    editions: data.editionDetails || [],
+                    documents: data.documents || []
                 };
 
-                // Temp Sets for Edition Mode
-                const edSets = {
-                    langs: {},
-                    countries: {},
-                    cities: {},
-                    years: {},
-                    features: {},
-                    is_letter: new Set()
-                };
+                // Topics hierarchy counts
+                const activeTopics = new Map(Object.entries(data.topics || {}));
 
-                // Processing Loop
-                dataSet.forEach(d => {
-                    s.editions.add(d.edition);
-
-                    if (mode === 'document') {
-                        // Document Mode aggregation
-                        // Language (Only if we want it)
-                        if (!options.skipLang) {
-                            if (!s.langs[d.lang]) s.langs[d.lang] = initStatObj();
-                            s.langs[d.lang].total++;
-                            if (d.langInferred) s.langs[d.lang].inferred++;
-                            else s.langs[d.lang].confirmed++;
+                // Attach counts to hierarchy
+                function attachCounts(topics) {
+                    topics.forEach(t => {
+                        t.total_count = activeTopics.get(t.id) || 0;
+                        if (t.subtopics && t.subtopics.length > 0) {
+                            attachCounts(t.subtopics);
                         }
-
-                        // Country
-                        if (!options.skipGeo && d.country) {
-                            if (!s.countries[d.country]) s.countries[d.country] = initStatObj();
-                            s.countries[d.country].total++;
-                            if (d.countryInferred) s.countries[d.country].inferred++;
-                            else s.countries[d.country].confirmed++;
-                        }
-                        // City
-                        if (!options.skipGeo && d.city) {
-                            if (!s.cities[d.city]) s.cities[d.city] = initStatObj();
-                            s.cities[d.city].total++;
-                            if (d.cityInferred) s.cities[d.city].inferred++;
-                            else s.cities[d.city].confirmed++;
-                        }
-                        // Features
-                        if (!options.skipFeatures) {
-                            Object.keys(d.features).forEach(f => {
-                                s.features[f] = (s.features[f] || 0) + 1;
-                            });
-                            if (d.features['is_letter']) s.is_letter++;
-                        }
-                        // Years
-                        if (!options.skipTime) {
-                            const yearsArr = d['years_' + FILTERS.dateSource];
-                            if (yearsArr && yearsArr.length > 0) {
-                                yearsArr.forEach(y => {
-                                    if (!s.years[y]) s.years[y] = { count: 0 };
-                                    s.years[y].count++;
-                                });
-                            }
-                        }
-
-                    } else {
-                        // EDITION MODE (Using Sets)
-                        // Language
-                        if (!options.skipLang) {
-                            if (!edSets.langs[d.lang]) edSets.langs[d.lang] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.langInferred) edSets.langs[d.lang].inferred.add(d.edition);
-                            else edSets.langs[d.lang].confirmed.add(d.edition);
-                        }
-                        // Country
-                        if (!options.skipGeo && d.country) {
-                            if (!edSets.countries[d.country]) edSets.countries[d.country] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.countryInferred) edSets.countries[d.country].inferred.add(d.edition);
-                            else edSets.countries[d.country].confirmed.add(d.edition);
-                        }
-                        // City
-                        if (!options.skipGeo && d.city) {
-                            if (!edSets.cities[d.city]) edSets.cities[d.city] = { confirmed: new Set(), inferred: new Set() };
-                            if (d.cityInferred) edSets.cities[d.city].inferred.add(d.edition);
-                            else edSets.cities[d.city].confirmed.add(d.edition);
-                        }
-                        // Years
-                        if (!options.skipTime) {
-                            const yearsArr = d['years_' + FILTERS.dateSource];
-                            if (yearsArr) {
-                                yearsArr.forEach(y => {
-                                    if (!edSets.years[y]) edSets.years[y] = new Set();
-                                    edSets.years[y].add(d.edition);
-                                });
-                            }
-                        }
-                        // Features
-                        if (!options.skipFeatures) {
-                            Object.keys(d.features).forEach(f => {
-                                addToSet(edSets.features, f, d.edition);
-                                if (f === 'is_letter') edSets.is_letter.add(d.edition);
-                            });
-                        }
-                    }
-                }); // End forEach
-
-                // Finalize Edition Sets if needed
-                if (mode !== 'document') {
-                    const finalize = (source, target) => {
-                        for (let k in source) {
-                            const c = source[k].confirmed;
-                            const i = source[k].inferred;
-                            const all = new Set([...c, ...i]);
-                            target[k] = { total: all.size, confirmed: c.size, inferred: i.size };
-                        }
-                    };
-                    if (!options.skipLang) finalize(edSets.langs, s.langs);
-                    if (!options.skipGeo) {
-                        finalize(edSets.countries, s.countries);
-                        finalize(edSets.cities, s.cities);
-                    }
-                    if (!options.skipTime) {
-                        for (let k in edSets.years) {
-                            s.years[k] = {
-                                count: edSets.years[k].size
-                            };
-                        }
-                    }
-
-                    if (!options.skipFeatures) {
-                        for (let k in edSets.features) s.features[k] = edSets.features[k].size;
-                        s.is_letter = edSets.is_letter.size;
-                    }
+                    });
+                }
+                if (SHOW_TOPICS) {
+                    attachCounts(TOPIC_HIERARCHY);
+                    renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
                 }
 
-                return s;
+                // If modal is open, refresh its content
+                const modal = document.getElementById('subsetModal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    renderSubsetModalContent();
+                }
+
+            } catch (err) {
+                console.error("Error updating dashboard:", err);
+                document.getElementById('statsline').innerHTML =
+                    `<span class="text-rose-400">${escapeHtml(err.message || 'Failed to connect to database API.')}</span>`;
             }
-
-            // 1. Calculate Main Stats (Everything but Langs/Features is strict)
-            const mainStats = computeStats(FILTERED_DATA, { skipLang: true, skipFeatures: true });
-
-            // 2. Calculate Lang Stats (Use LANG_DATA)
-            const langStats = computeStats(LANG_DATA, { skipGeo: true, skipTime: true, skipFeatures: true });
-
-            // 3. Calculate Feature Stats (Use FEATURE_DATA)
-            const featureStats = computeStats(FEATURE_DATA, { skipGeo: true, skipTime: true, skipLang: true });
-
-
-            // Merge for rendering
-            // We use mainStats for everything effectively, except we inject the langs from langStats
-            mainStats.langs = langStats.langs;
-            mainStats.features = featureStats.features;
-            // Note: computeStats for features returns simple object map in .features,
-            // but for Langs it returns the complex {total, confirmed...} object.
-            // renderFeatureChart expects simple object. computeStats returns simple object loop (lines 483 / 553+578)
-            // Wait, computeStats line 483: s.features[f] = number. Correct.
-
-            // --- Calculate Topics (Using Filtered Data) ---
-            const activeTopics = new Map();
-
-            if (VIEW_MODE === 'document') {
-                // Iterate Filtered Documents to Count Topics
-                FILTERED_DATA.forEach(d => {
-                    const tInfo = DOCUMENT_TOPICS[d.filename];
-
-                    if (tInfo) {
-                        const tid = tInfo.topic_id;
-                        if (tid) {
-                            activeTopics.set(tid, (activeTopics.get(tid) || 0) + 1);
-                        }
-                    }
-                });
-            } else {
-                // Edition Mode
-                mainStats.editions.forEach(edId => {
-                    if (EDITION_TOPICS[edId]) {
-                        for (const [tId, count] of Object.entries(EDITION_TOPICS[edId])) {
-                            if (count > 0) {
-                                activeTopics.set(tId, (activeTopics.get(tId) || 0) + 1);
-                            }
-                        }
-                    }
-                });
-            }
-
-            renderTopicHierarchy(TOPIC_HIERARCHY, activeTopics);
-
-            // 3. Render
-            renderStatsLine(FILTERED_DATA.length, mainStats.editions.size);
-            renderLangChart(mainStats.langs); // This now contains the "Wide" distribution
-
-            renderCityList(mainStats.cities);
-            const totalCount = (VIEW_MODE === 'document') ? FEATURE_DATA.length : featureStats.editions.size;
-            renderFeatureChart(mainStats.features, totalCount);
-            renderTimeChart(mainStats.years);
-
-            updateMap(mainStats.cities);
-
-            renderEditionList(mainStats.editions);
-
         }
 
-        function toggleInferredDate(checked) {
-            FILTERS.includeInferredDate = checked;
-            updateDashboard();
+        function renderStatsLine(count, editionsCount) {
+            document.getElementById('statsline').innerHTML = 
+                `<b>${count.toLocaleString()}</b> Documents &bull; <b>${editionsCount.toLocaleString()}</b> Editions <button type="button" onclick="openSubsetModal('editions')" class="ml-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 px-2.5 py-0.5 rounded border border-gray-300 font-medium inline-flex items-center gap-1 transition-colors shadow-2xs cursor-pointer" title="Inspect matching editions and documents list"><span>📋 Browse Filtered Items</span></button>`;
         }
+
+        // NOTE: the old `includeInferredDate` toggle was removed. The schema's
+        // document_time_entities table carries no inference flag (unlike
+        // document_languages.inference_type), so the distinction cannot be made
+        // in SQL. Re-adding it means adding an is_inferred column and
+        // backfilling it from dashboard_data.json's date_*_inf fields.
 
         function toggleContextual() {
             SHOW_CONTEXTUAL = !SHOW_CONTEXTUAL;
@@ -1071,20 +842,25 @@
             map[key].add(val);
         }
 
+        let EXTRACTED_FACETS = [];
+
         function resetFilters() {
             document.getElementById('searchInput').value = "";
+            LAST_SEARCH = null;
+            CURRENT_SEARCH_INTENTS = [];
             document.getElementById('searchStatus').classList.add('hidden');
+            document.getElementById('searchMessage').classList.add('hidden');
+            EXTRACTED_FACETS = [];
             FILTERS = {
                 lang: null,
                 country: null,
                 city: null,
+                place: null,
                 yearRange: null,
-                gender: null,
-                doc_type: null,
                 feature: null,
+                properties: [],
+                tagValues: [],
                 topicId: null,
-                ids: null,
-                includeInferredDate: true,
                 dateSource: 'contextual',
                 geoSource: 'contextual'
             };
@@ -1138,7 +914,7 @@
             body.innerHTML = '';
             ids.forEach(id => {
                 // Format slug: underscores -> spaces, title-case
-                const label = id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const label = editionLabel(id);
                 const row = document.createElement('div');
                 row.className = 'px-1 py-0.5 rounded text-gray-700 hover:bg-gray-50 leading-snug';
                 row.textContent = label;
@@ -1147,17 +923,22 @@
             });
         }
 
-        // --- SEARCH INTEGRATION ---
+        // --- SEARCH INTEGRATION (MCF / CaISI FOUNDATION) ---
+        let SEARCH_APPLIED = false;
+
         function clearSearch() {
             const input = document.getElementById('searchInput');
             input.value = '';
             document.getElementById('clearSearch').classList.add('hidden');
             document.getElementById('searchMessage').classList.add('hidden');
             document.getElementById('searchStatus').classList.add('hidden');
-            // If search applied a filter, reset it
-            if (FILTERS.search) {
-                FILTERS.search = null;
-                updateDashboard();
+            LAST_SEARCH = null;
+            CURRENT_SEARCH_INTENTS = [];
+            if (SEARCH_APPLIED) {
+                SEARCH_APPLIED = false;
+                resetFilters();
+            } else {
+                renderFilterBar();
             }
             input.focus();
         }
@@ -1165,13 +946,15 @@
         async function handleSearch() {
             const query = document.getElementById('searchInput').value.trim();
             const statusEl = document.getElementById('searchStatus');
+            const messageEl = document.getElementById('searchMessage');
 
             if (!query) {
                 return;
             }
 
-            statusEl.textContent = "Searching...";
+            statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><svg class="animate-spin h-3.5 w-3.5 text-blue-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Interpreting query...</span>`;
             statusEl.classList.remove('hidden');
+            messageEl.classList.add('hidden');
 
             try {
                 const res = await fetch('/api/interpret', {
@@ -1182,92 +965,484 @@
 
                 if (!res.ok) throw new Error("API Error");
 
-                const data = await res.json();
-                console.log("Search response:", data.data);
+                const result = await res.json();
+                const data = result.data || {};
+                console.log("MCF / CaISI Search response:", data);
 
-                applyBackendFacets(data.data.facets);
+                const scope = data.scope || {};
+                const intents = data.intents || [];
+                const facets = data.facets || {};
+                const msg = data.message || scope.message || "Query processed.";
 
-                // Show LLM message where "Done." used to appear
-                const msg = data.data && data.data.message;
-                statusEl.textContent = msg || "Done.";
-                statusEl.classList.remove('hidden');
-
-                // Only auto-hide if it's just "Done.". Keep LLM messages permanent until cleared.
-                if (!msg) {
-                    setTimeout(() => statusEl.classList.add('hidden'), 2000);
+                LAST_SEARCH = { query, engine: data.engine, attempts: data.attempts || [], message: msg,
+                                decision: scope.decision || 'supported', reason: scope.reason || '', hint: scope.message || '' };
+                statusEl.classList.add('hidden');
+                if (scope.decision === 'unsupported' || scope.decision === 'unclear') {
+                    CURRENT_SEARCH_INTENTS = [];
+                    renderFilterBar();
+                    return;
                 }
-
+                // Supported query: apply the facets; the bar shows each intent as a pill
+                CURRENT_SEARCH_INTENTS = (intents || [])
+                    .filter(it => SHOW_TOPICS || !isTopicIntent(it))
+                    .map(it => ({ ...it, active: true }));
+                if (!CURRENT_SEARCH_INTENTS.length) LAST_SEARCH.decision = 'nothing';
+                applyBackendFacets(facets, intents);
             } catch (err) {
-                console.error(err);
-                statusEl.textContent = "Error searching. See console.";
-                statusEl.classList.remove('hidden');
+                console.error("Search error:", err);
+                statusEl.classList.add('hidden');
+                LAST_SEARCH = { query, decision: 'error', reason: err.message || 'The search service did not answer.' };
+                renderFilterBar();
             }
         }
 
-        function applyBackendFacets(facets) {
+        let CURRENT_SEARCH_INTENTS = [];
+        let LAST_SEARCH = null;     // { query, engine, attempts, message, decision, reason, hint }
+        let LAST_TOTAL = null;
+        const EXAMPLE_QUERIES = ['Letters from 1850 in French', 'Latin inscriptions from the 2nd century', 'Diaries written in German'];
+        const DATE_SOURCE_NAMES = { creation: 'written or made', publication: 'published', contextual: 'mentioned in the text' };
+
+        function featureLabel(key) {
+            if (FEATURE_LABELS[key]) return FEATURE_LABELS[key];
+            if (DYNAMIC_FILTER_META[key]?.label) return DYNAMIC_FILTER_META[key].label;
+            return String(key || '').replace(/^(is|contains)_/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+        }
+        function languageLabel(code) {
+            return (typeof LANGUAGE_NAMES !== 'undefined' && LANGUAGE_NAMES[code]) || DB_LANGUAGE_NAMES[code] || code;
+        }
+
+        // Filters currently narrowing the view, whatever set them (search, clicks, tag modal)
+        function activeFilterPills() {
+            const pills = [];
+            if (FILTERS.lang) pills.push({ kind: 'lang', label: `Language: ${languageLabel(FILTERS.lang)}` });
+            if (FILTERS.country) pills.push({ kind: 'country', label: `Place: ${FILTERS.country} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.city) pills.push({ kind: 'city', label: `Place: ${FILTERS.city} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.place) pills.push({ kind: 'place', label: `Place: ${FILTERS.place.key} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.yearRange) {
+                const [a, b] = FILTERS.yearRange;
+                pills.push({ kind: 'yearRange', label: `${a === b ? formatYear(a) : formatYear(a) + '–' + formatYear(b)} · ${DATE_SOURCE_NAMES[FILTERS.dateSource] || ''}` });
+            }
+            if (FILTERS.feature) pills.push({ kind: 'feature', label: featureLabel(FILTERS.feature.key) });
+            (FILTERS.tagValues || []).forEach((tv, i) => pills.push({ kind: 'tagValue', idx: i, label: `<${tv.tag}>${tv.value ? ' = ' + tv.value : ''}` }));
+            (FILTERS.properties || []).forEach((p, i) => {
+                if (FILTERS.feature && (p.name === FILTERS.feature.key || BINARY_FACET_MAPPING[p.name] === FILTERS.feature.key)) return;
+                pills.push({ kind: 'property', idx: i, label: `${featureLabel(p.name)}: ${p.value}` });
+            });
+            if (FILTERS.topicId && SHOW_TOPICS) pills.push({ kind: 'topic', label: `Topic: ${(TOPIC_HIERARCHY.find(t => t.id === FILTERS.topicId) || {}).name || FILTERS.topicId}` });
+            return pills;
+        }
+
+        const INTENT_FOR = { lang: ['language'], country: ['geography'], city: ['geography'], yearRange: ['time'] };
+        function removeFilter(kind, idx, key) {
+            // A filter that came from the search: switch its intent off so the pill above shows it as off
+            const facets = INTENT_FOR[kind];
+            const fromIntent = CURRENT_SEARCH_INTENTS.filter(it => it.active !== false && (
+                (facets && facets.includes(it.facet)) ||
+                (kind === 'feature' && (BINARY_FACET_MAPPING[it.facet] || /^(is|contains)_/.test(it.facet || ''))) ||
+                (kind === 'tagValue' && /^(tag_|tagValues|persName|signed)/.test(it.facet || ''))));
+            if (fromIntent.length) {
+                fromIntent.forEach(it => { it.active = false; });
+                reapplyActiveIntents();
+                return;
+            }
+            if (kind === 'tagValue') FILTERS.tagValues.splice(idx, 1);
+            else if (kind === 'property') FILTERS.properties.splice(idx, 1);
+            else if (kind === 'custom') { DYNAMIC_FEATURES.delete(key); }
+            else if (kind === 'topic') FILTERS.topicId = null;
+            else {
+                if (kind === 'feature' && FILTERS.feature) {
+                    const k = FILTERS.feature.key;
+                    FILTERS.properties = (FILTERS.properties || []).filter(p => p.name !== k && BINARY_FACET_MAPPING[p.name] !== k);
+                }
+                FILTERS[kind] = null;
+            }
+            updateDashboard();
+        }
+
+        function runExample(q) {
+            const input = document.getElementById('searchInput');
+            input.value = q;
+            document.getElementById('clearSearch').classList.remove('hidden');
+            handleSearch();
+        }
+
+        function engineNote(s) {
+            const name = ENGINE_LABELS[s.engine] || s.engine || 'unknown';
+            const failed = (s.attempts || []).filter(a => !a.ok).map(a => ENGINE_LABELS[a.engine] || a.engine);
+            if (failed.length) {
+                return `<span class="text-amber-700" title="${escapeHtml((s.attempts || []).map(a => `${a.engine}: ${a.reason || 'ok'}`).join('\n'))}">interpreted by ${escapeHtml(name)} (${escapeHtml(failed.join(', '))} unavailable)</span>`;
+            }
+            return `<span class="text-gray-500">interpreted by ${escapeHtml(name)}</span>`;
+        }
+
+        function renderFilterBar() {
+            const bar = document.getElementById('filterBar');
+            if (!bar) return;
+            const filters = activeFilterPills();
+            const s = LAST_SEARCH;
+            if (!s && !filters.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+            const parts = [];
+
+            if (s) {
+                const q = `<span class="font-medium text-gray-800">“${escapeHtml(s.query)}”</span>`;
+                if (s.decision === 'error') {
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap"><span class="text-rose-600">Search failed for ${q}: ${escapeHtml(s.reason)}</span></div>`);
+                } else if (s.decision === 'unsupported' || s.decision === 'unclear' || s.decision === 'nothing') {
+                    const head = s.decision === 'unsupported' ? 'This question cannot be answered with the collection\'s metadata'
+                        : s.decision === 'unclear' ? 'This query is too broad to turn into filters' : 'No filters could be derived from this query';
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap">
+                        <span class="${s.decision === 'unsupported' ? 'text-amber-800' : 'text-sky-800'}">${head}: ${q}.</span>
+                        ${s.reason ? `<span class="text-gray-500">${escapeHtml(s.reason)}</span>` : ''}
+                        <span class="text-gray-500">Try:</span>
+                        ${EXAMPLE_QUERIES.map(e => `<button class="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-50 text-gray-700" onclick="runExample('${escapeHtml(e).replace(/'/g, '&#39;')}')">${escapeHtml(e)}</button>`).join('')}
+                        ${s.engine ? engineNote(s) : ''}
+                    </div>`);
+                } else {
+                    const pills = CURRENT_SEARCH_INTENTS.map((it, idx) => {
+                        const on = it.active !== false;
+                        const cls = on ? 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
+                                       : 'bg-white text-gray-400 border-gray-300 line-through hover:bg-gray-50';
+                        const src = it.facet === 'geography' && it.filter?.source ? ` · ${escapeHtml(GEO_SOURCE_LABELS[it.filter.source] || it.filter.source)}`
+                                  : it.facet === 'time' && it.filter?.source ? ` · ${escapeHtml(DATE_SOURCE_NAMES[it.filter.source] || it.filter.source)}` : '';
+                        return `<button type="button" onclick="toggleIntentPill(${idx})" class="inline-flex items-center gap-1 px-2 py-0.5 rounded border ${cls}"
+                                    title="${escapeHtml(it.description || '')}${it.description ? '\n' : ''}${on ? 'Applied: click to switch off' : 'Off: click to apply'}">
+                                    <span class="w-1.5 h-1.5 rounded-full ${on ? 'bg-amber-500' : 'bg-gray-300'}"></span>${escapeHtml(it.statement || it.facet || '')}${src}</button>`;
+                    }).join('');
+                    const canSave = searchTagValues().length > 0;
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-gray-500">Search</span>${q}<span class="text-gray-400">→</span>${pills}${engineNote(s)}
+                        ${canSave ? `<button class="px-2 py-0.5 rounded border border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100" onclick="openSaveSearchTag()"
+                            title="Keep this as a characteristic (a tag) with its own Y/N counts">+ Save as tag</button>` : ''}
+                    </div>`);
+                }
+            }
+
+            const zero = LAST_TOTAL === 0 && filters.length > 0;
+            if (filters.length) {
+                parts.push(`<div class="flex items-center gap-2 flex-wrap mt-1">
+                    <span class="text-gray-500">Filters</span>
+                    ${filters.map(f => `<span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded border border-gray-300 bg-gray-50 text-gray-700">${escapeHtml(f.label)}
+                        <button class="text-gray-400 hover:text-rose-600 px-0.5" title="Remove this filter" onclick="removeFilter('${f.kind}', ${f.idx ?? -1}, '${escapeHtml(f.key || '')}')">×</button></span>`).join('')}
+                    ${zero ? '<span class="text-rose-600">No documents match all of these; remove one.</span>'
+                           : (LAST_TOTAL !== null ? `<span class="text-gray-500">${LAST_TOTAL.toLocaleString()} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}</span>` : '')}
+                    <button class="ml-auto text-gray-500 hover:text-gray-800 underline" onclick="resetFilters()">Clear all</button>
+                </div>`);
+            } else if (s) {
+                // no filters: put the clear button at the end of the search row
+                parts[parts.length - 1] = parts[parts.length - 1].replace(/<\/div>\s*$/,
+                    '<button class="ml-auto text-gray-500 hover:text-gray-800 underline" onclick="clearSearch()">Clear</button></div>');
+            }
+            bar.innerHTML = parts.join('');
+            bar.classList.remove('hidden');
+        }
+
+        // Set from /api/dashboard: true only for a v2 database whose topic models passed the evaluation
+        // (the old model's assignments were near-uniform; data/geo_audit/FIX_PLAN.md, T1).
+        let SHOW_TOPICS = false;
+        const isTopicIntent = it => it && (it.facet === 'topic' || /^([a-z]{2,3}-)?T\d+$/.test(it.facet || '') ||
+            (it.statement || '').toLowerCase().startsWith('topic:'));
+
+        // Years are signed (BC < 0); there is no year 0.
+        function formatYear(y) {
+            y = Number(y);
+            return y < 0 ? `${-y} BC` : `${y}`;
+        }
+
+        // Edition display name from the editions table, else the prettified slug.
+        function editionLabel(slug) {
+            const meta = (typeof EDITION_METADATA !== 'undefined' && EDITION_METADATA[slug]) || {};
+            return meta.display_name || String(slug || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        // Which engine answered /api/interpret (see api/interpret.js fallback chain).
+        const ENGINE_LABELS = { caisi: 'CaISI', gemini: 'Gemini', openai: 'OpenAI', heuristic: 'rule-based fallback' };
+
+        // Global mapping from API facet names to dashboard feature keys
+        const BINARY_FACET_MAPPING = {
+            'medieval_manuscript': 'is_medieval_manuscript',
+            'is_medieval_manuscript': 'is_medieval_manuscript',
+            'manuscript': 'is_manuscript',
+            'is_manuscript': 'is_manuscript',
+            'letter': 'is_letter',
+            'is_letter': 'is_letter',
+            'political_letter': 'is_political_letter',
+            'is_political_letter': 'is_political_letter',
+            'verse': 'contains_verse',
+            'contains_verse': 'contains_verse',
+            'direct_speech': 'contains_direct_speech',
+            'contains_direct_speech': 'contains_direct_speech',
+            'linguistic_annotation': 'contains_linguistic_annotation',
+            'contains_linguistic_annotation': 'contains_linguistic_annotation',
+            'theatre': 'contains_theatre',
+            'contains_theatre': 'contains_theatre',
+            'east_asian_scripts': 'contains_east_asian_scripts',
+            'contains_east_asian_scripts': 'contains_east_asian_scripts',
+            'japanese_scripts': 'contains_japanese_scripts',
+            'contains_japanese_scripts': 'contains_japanese_scripts',
+            'political_protocols': 'contains_political_protocols',
+            'contains_political_protocols': 'contains_political_protocols',
+            'dictionary': 'contains_dictionary',
+            'contains_dictionary': 'contains_dictionary',
+            'inscriptions': 'contains_inscriptions',
+            'contains_inscriptions': 'contains_inscriptions',
+            'law_texts': 'contains_law_texts',
+            'contains_law_texts': 'contains_law_texts',
+            'newspaper_articles': 'contains_newspaper_articles',
+            'contains_newspaper_articles': 'contains_newspaper_articles',
+            'diary': 'contains_diary',
+            'contains_diary': 'contains_diary',
+            'is_historic': 'is_historic',
+            'historic': 'is_historic',
+            'flags_signed': 'flags_signed',
+            'flags_stamp': 'flags_stamp'
+        };
+
+        function renderInteractiveIntentPills() { renderFilterBar(); }
+
+        function toggleIntentPill(idx) {
+            if (!CURRENT_SEARCH_INTENTS[idx]) return;
+            CURRENT_SEARCH_INTENTS[idx].active = !CURRENT_SEARCH_INTENTS[idx].active;
+            reapplyActiveIntents();
+            renderInteractiveIntentPills();
+        }
+
+        function reapplyActiveIntents() {
+            // Reset filters
+            FILTERS.country = null;
+            FILTERS.city = null;
+            FILTERS.place = null;
+            FILTERS.lang = null;
+            FILTERS.yearRange = null;
+            FILTERS.feature = null;
+            FILTERS.topicId = null;
+            FILTERS.properties = [];
+            FILTERS.tagValues = [];
+
+            CURRENT_SEARCH_INTENTS.forEach(it => {
+                if (it.active === false) return; // skipped!
+                
+                // 1. Time
+                if (it.facet === 'time' && it.filter?.values) {
+                    const yrs = it.filter.values.map(Number).filter(n => !isNaN(n));
+                    if (yrs.length === 1) FILTERS.yearRange = [yrs[0], yrs[0]];
+                    else if (yrs.length > 1) FILTERS.yearRange = [Math.min(...yrs), Math.max(...yrs)];
+                    if (yrs.length) selectDateSource(it.filter.source || 'creation');
+                }
+                // 2. Geography
+                else if (it.facet === 'geography' && it.filter?.values) {
+                    FILTERS.country = it.filter.values[0];
+                    if (it.filter.source) setGeoSource(it.filter.source, false);
+                }
+                // 3. Language
+                else if (it.facet === 'language' && it.filter?.values) {
+                    FILTERS.lang = it.filter.values[0];
+                }
+                // 4. TEI Tag or Extracted Facet
+                else if (it.facet?.startsWith('tag_') || it.facet?.startsWith('tagValues.') || it.facet === 'tagValues' || it.statement?.toLowerCase().startsWith('tag:')) {
+                    let tagName = it.facet.replace('tag_', '').replace('tagValues.', '');
+                    if (it.statement && it.statement.includes('<')) {
+                        const tagMatch = it.statement.match(/<([^>]+)>/);
+                        if (tagMatch) tagName = tagMatch[1];
+                    }
+                    const val = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null);
+                    FILTERS.tagValues = FILTERS.tagValues || [];
+                    FILTERS.tagValues.push({ tag: tagName, value: val });
+                }
+                // 5. PersName / Person / Author
+                else if (it.facet === 'persName' || it.facet?.includes('persName') || it.statement?.toLowerCase().includes('person')) {
+                    const personVal = (it.filter?.values && it.filter.values[0]) || it.statement.match(/"([^"]+)"/)?.[1] || (it.statement.includes(':') ? it.statement.split(':')[1].trim() : null);
+                    if (personVal) {
+                        FILTERS.tagValues = FILTERS.tagValues || [];
+                        FILTERS.tagValues.push({ tag: 'persName', value: personVal });
+                    }
+                }
+                else if (it.facet === 'signed' || it.statement?.toLowerCase().includes('signed:') || it.statement?.toLowerCase().includes('signature')) {
+                    const signerVal = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null) || it.statement.match(/"([^"]+)"/)?.[1];
+                    FILTERS.tagValues = FILTERS.tagValues || [];
+                    FILTERS.tagValues.push({ tag: 'signed', value: signerVal || null });
+                }
+                // 6. Feature
+                else if (BINARY_FACET_MAPPING[it.facet] || it.facet?.startsWith('contains_') || it.facet?.startsWith('is_') || it.statement?.toLowerCase().includes('feature:')) {
+                    const mappedKey = BINARY_FACET_MAPPING[it.facet] || it.facet;
+                    FILTERS.feature = { key: mappedKey, value: true };
+                }
+                // 7. Topic
+                else if (SHOW_TOPICS && (it.facet === 'topic' || it.facet?.startsWith('T') || it.statement?.toLowerCase().includes('topic:'))) {
+                    const topicId = (it.filter?.values && it.filter.values[0]) || (it.facet.startsWith('T') ? it.facet : null);
+                    FILTERS.topicId = topicId;
+                }
+            });
+
+            if (FILTERS.tagValues && FILTERS.tagValues.length > 0) {
+                const uniqueTags = new Map();
+                FILTERS.tagValues.forEach(tv => {
+                    const key = `${tv.tag}:${tv.value || '*'}`;
+                    if (!uniqueTags.has(key)) uniqueTags.set(key, tv);
+                });
+                FILTERS.tagValues = Array.from(uniqueTags.values());
+            }
+
+            updateDashboard();
+        }
+
+        function applyBackendFacets(facets, intents = []) {
+            SEARCH_APPLIED = true;
             // Reset filters logic
             FILTERS.country = null;
             FILTERS.city = null;
+            FILTERS.place = null;
             FILTERS.lang = null;
             FILTERS.yearRange = null;
-            FILTERS.feature = null; // Reset binary characteristics
-
-            // Mapping from API facet names to dashboard feature keys
-            const BINARY_FACET_MAPPING = {
-                'medieval_manuscript': 'is_medieval_manuscript',
-                'manuscript': 'is_manuscript',
-                'letter': 'is_letter',
-                'political_letter': 'is_political_letter',
-                'verse': 'contains_verse',
-                'direct_speech': 'contains_direct_speech',
-                'linguistic_annotation': 'contains_linguistic_annotation',
-                'theatre': 'contains_theatre',
-                'east_asian_scripts': 'contains_east_asian_scripts',
-                'japanese_scripts': 'contains_japanese_scripts',
-                'political_protocols': 'contains_political_protocols',
-                'dictionary': 'contains_dictionary',
-                'inscriptions': 'contains_inscriptions',
-                'law_texts': 'contains_law_texts',
-                'newspaper_articles': 'contains_newspaper_articles',
-                'diary': 'contains_diary'
-            };
+            FILTERS.feature = null;
+            FILTERS.topicId = null;
+            FILTERS.properties = [];
 
             // 1. Time
             if (facets.time && facets.time.length > 0) {
-                const years = facets.time[0].values.map(y => parseInt(y)).filter(n => !isNaN(n));
-                if (years.length > 0) {
-                    if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
-                    else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                const values = facets.time[0].values;
+                if (Array.isArray(values)) {
+                    const years = values.map(y => parseInt(y)).filter(n => !isNaN(n));
+                    if (years.length > 0) {
+                        if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
+                        else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                        selectDateSource(facets.time[0].source || 'creation');
+                    }
                 }
             }
 
             // 2. Geography
             if (facets.geography && facets.geography.length > 0) {
-                const val = facets.geography[0].values[0];
-                FILTERS.country = val; // Direct assignment
+                const val = facets.geography[0].values?.[0];
+                if (val) {
+                    FILTERS.country = val;
+                    // "letters from France" -> creation layer, "about France" -> contextual
+                    if (facets.geography[0].source) setGeoSource(facets.geography[0].source, false);
+                }
             }
 
             // 3. Language
             if (facets.language && facets.language.length > 0) {
-                const langMap = { "french": "fr", "english": "en", "german": "de", "latin": "la" };
-                const rawVal = facets.language[0].values[0].toLowerCase();
+                const langMap = { "french": "fr", "english": "en", "german": "de", "latin": "la", "italian": "it", "spanish": "es" };
+                const rawVal = String(facets.language[0].values?.[0] || '').toLowerCase();
                 FILTERS.lang = langMap[rawVal] || rawVal;
             }
 
-            // 4. Binary Characteristics
-            // Apply the first "true" binary facet found (since dashboard supports single feature filter)
-            for (const [apiFacetName, dashboardKey] of Object.entries(BINARY_FACET_MAPPING)) {
-                if (facets[apiFacetName] && facets[apiFacetName].length > 0) {
-                    const facetData = facets[apiFacetName][0];
-                    if (facetData && facetData.values && facetData.values.length > 0) {
-                        const value = facetData.values[0];
-                        if (value && value.toLowerCase() === 'true') {
-                            console.log(`Applied binary facet: ${apiFacetName} -> ${dashboardKey}`);
-                            FILTERS.feature = { key: dashboardKey, value: true };
-                            break; // Apply only the first one found
+            // 4. Topic
+            if (!SHOW_TOPICS) {
+                // topic facet disabled: ignore topic suggestions from search
+            } else if (facets.topicId) {
+                FILTERS.topicId = facets.topicId;
+            } else if (Array.isArray(intents)) {
+                const topInt = intents.find(it => it.facet === 'topic' || it.statement?.toLowerCase().startsWith('topic:'));
+                if (topInt) {
+                    FILTERS.topicId = (topInt.filter?.values && topInt.filter.values[0]) || topInt.facet;
+                }
+            }
+
+            // 5. Properties from dynamic MCF curation
+            if (Array.isArray(facets.properties) && facets.properties.length > 0) {
+                FILTERS.properties = facets.properties;
+            }
+
+            // Fallback checking legacy binary facets dictionary
+            if (!FILTERS.feature) {
+                for (const [apiFacetName, dashboardKey] of Object.entries(BINARY_FACET_MAPPING)) {
+                    if (facets[apiFacetName] && facets[apiFacetName].length > 0) {
+                        const facetData = facets[apiFacetName][0];
+                        if (facetData && facetData.values && facetData.values.length > 0) {
+                            const value = facetData.values[0];
+                            if (value && (value.toLowerCase() === 'true' || value === true)) {
+                                FILTERS.feature = { key: dashboardKey, value: true };
+                                break;
+                            }
                         }
                     }
                 }
+            }
+
+            // 5. Raw TEI Tag Values & Extracted Facets
+            EXTRACTED_FACETS = [];
+            const processedTagKeys = new Set();
+
+            const CANONICAL_TAGS = {
+                'persname': 'persName',
+                'placename': 'placeName',
+                'orgname': 'orgName',
+                'rolename': 'roleName',
+                'msdesc': 'msDesc',
+                'handdesc': 'handDesc',
+                'handshift': 'handShift',
+                'physdesc': 'physDesc',
+                'correspaction': 'correspAction',
+                'correspdesc': 'correspDesc',
+                'origdate': 'origDate',
+                'pubplace': 'pubPlace'
+            };
+
+            function addExtractedFacet(tagName, tagValue, customLabel = null, customDesc = null) {
+                if (!tagName) return;
+                const cleanTag = tagName.toLowerCase().trim();
+                const displayTag = CANONICAL_TAGS[cleanTag] || cleanTag;
+                const isGeneric = !tagValue || tagValue === 'true' || tagValue === true;
+                const normVal = isGeneric ? null : String(tagValue).trim();
+                const dedupeKey = isGeneric ? cleanTag : `${cleanTag}:${normVal.toLowerCase()}`;
+
+                if (processedTagKeys.has(dedupeKey)) return;
+                if (isGeneric && processedTagKeys.has(cleanTag)) return;
+
+                processedTagKeys.add(dedupeKey);
+                if (isGeneric) processedTagKeys.add(cleanTag);
+
+                let label = customLabel;
+                if (!label || label.startsWith('<')) {
+                    if (cleanTag === 'persname' || cleanTag === 'author') label = normVal ? `Person: ${normVal}` : `Person (<persName>)`;
+                    else if (cleanTag === 'signed') label = normVal ? `Signer: ${normVal}` : `Signature (<signed>)`;
+                    else if (cleanTag === 'salute') label = `Salutation (<salute>)`;
+                    else if (cleanTag === 'seal') label = `Wax Seal (<seal>)`;
+                    else if (cleanTag === 'stamp') label = `Postage / Stamp (<stamp>)`;
+                    else if (cleanTag === 'gloss') label = `Gloss / Definition (<gloss>)`;
+                    else if (cleanTag === 'foreign') label = `Foreign Words (<foreign>)`;
+                    else if (cleanTag === 'rubric') label = `Rubric (<rubric>)`;
+                    else if (cleanTag === 'app') label = `Critical Apparatus (<app>)`;
+                    else if (normVal) label = `<${displayTag}>: ${normVal}`;
+                    else label = `<${displayTag}>`;
+                }
+
+                EXTRACTED_FACETS.push({
+                    tag: displayTag,
+                    value: normVal,
+                    label: label,
+                    description: customDesc || `Filter matching TEI element <${displayTag}>${normVal ? ` with value "${normVal}"` : ''}`
+                });
+            }
+
+            if (Array.isArray(facets.tagValues) && facets.tagValues.length > 0) {
+                facets.tagValues.forEach(tv => {
+                    if (tv && tv.tag) addExtractedFacet(tv.tag, tv.value);
+                });
+            }
+
+            if (Array.isArray(intents) && intents.length > 0) {
+                intents.forEach(it => {
+                    const statement = it.statement || '';
+                    let tagName = null;
+                    let tagVal = (it.filter?.values && it.filter.values[0] !== 'true' ? it.filter.values[0] : null);
+
+                    if (it.facet?.startsWith('tag_')) tagName = it.facet.replace('tag_', '');
+                    else if (it.facet?.startsWith('tagValues.')) tagName = it.facet.replace('tagValues.', '');
+                    else if (statement.includes('<') && statement.includes('>')) {
+                        const m = statement.match(/<([^>]+)>/);
+                        if (m) tagName = m[1];
+                    }
+
+                    if (tagName) {
+                        addExtractedFacet(tagName, tagVal, statement, it.description);
+                    }
+                });
+            }
+
+            if (Array.isArray(facets.tagValues) && facets.tagValues.length > 0) {
+                FILTERS.tagValues = facets.tagValues;
             }
 
             updateDashboard();
@@ -1282,8 +1457,19 @@
             updateDashboard();
         }
 
+        // A click on a place (map marker or Places list) selects exactly that place; a place typed in the
+        // search stays a text match (FILTERS.city). After the update the map zooms to it.
+        let LAST_CITIES = {};
+        let ZOOM_TO_MATCH = false;
         function toggleCity(cityName) {
-            FILTERS.city = FILTERS.city === cityName ? null : cityName;
+            const st = LAST_CITIES[cityName];
+            if (FILTERS.place && FILTERS.place.key === cityName) {
+                FILTERS.place = null;
+            } else {
+                FILTERS.place = { key: cityName, name: (st && st.name) || cityName, country: (st && st.country) || '' };
+                FILTERS.city = null;
+                ZOOM_TO_MATCH = true;
+            }
             updateDashboard();
         }
 
@@ -1303,8 +1489,8 @@
 
         // Explicit label overrides for keys whose auto-generated labels are unclear
         const FEATURE_LABELS = {
-            'is_manuscript': 'Medieval Manuscript',
-            'is_medieval_manuscript': 'Medieval Manuscript (strict)',
+            'is_manuscript': 'Manuscript',
+            'is_medieval_manuscript': 'Medieval Manuscript',
         };
 
         function renderFeatureChart(features, totalCount) {
@@ -1489,6 +1675,93 @@
             renderSection('Content Characteristics', contentEntries, 'border-t pt-1');
             renderSection('Other', otherEntries, 'border-t pt-1');
 
+            // Dynamically Extracted Facets from TEI Guidelines
+            if (EXTRACTED_FACETS.length > 0) {
+                const h = document.createElement('h4');
+                h.className = "text-[10px] font-bold text-gray-700 uppercase tracking-wider px-0.5 mb-1 mt-2 border-t pt-1.5 flex items-center justify-between";
+                h.innerHTML = `<span>✨ Extracted Facets (TEI)</span>`;
+                container.appendChild(h);
+
+                const extractedGrid = document.createElement('div');
+                extractedGrid.className = "space-y-1 mb-2";
+
+                EXTRACTED_FACETS.forEach(ef => {
+                    const efTagLower = String(ef.tag || '').toLowerCase();
+                    const efValLower = ef.value ? String(ef.value).toLowerCase() : null;
+
+                    const isActive = FILTERS.tagValues && FILTERS.tagValues.some(tv => {
+                        const tvTagLower = String(tv.tag || '').toLowerCase();
+                        const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                        if (tvTagLower !== efTagLower) return false;
+                        if (!efValLower) return true;
+                        return tvValLower === efValLower;
+                    });
+
+                    const row = document.createElement('div');
+                    row.className = "flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer transition-all "
+                        + (isActive ? "bg-amber-50 border-amber-400 text-amber-900 shadow-xs font-semibold" : "bg-sky-50/40 border-sky-200 text-gray-700 hover:bg-sky-50");
+                    row.title = ef.description;
+
+                    row.innerHTML = `
+                        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${isActive ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-sky-100 text-sky-800 border border-sky-200'}">&lt;${escapeHtml(ef.tag)}&gt;</span>
+                            <span class="truncate text-[11px]">${escapeHtml(ef.label)}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0 ml-1">
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${isActive ? 'bg-amber-200 text-amber-950 border-amber-300' : 'bg-gray-100 text-gray-500 border-gray-200'}">${isActive ? 'Active' : 'Inactive'}</span>
+                            <span class="text-gray-400 hover:text-red-500 text-sm leading-none ml-1 cursor-pointer font-bold px-0.5" title="Remove Facet">&times;</span>
+                        </div>
+                    `;
+
+                    row.querySelector('.hover\\:text-red-500').onclick = (e) => {
+                        e.stopPropagation();
+                        EXTRACTED_FACETS = EXTRACTED_FACETS.filter(item => item !== ef);
+                        FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => {
+                            const tvTagLower = String(tv.tag || '').toLowerCase();
+                            const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                            return !(tvTagLower === efTagLower && (!efValLower || tvValLower === efValLower));
+                        });
+                        if (CURRENT_SEARCH_INTENTS) {
+                            CURRENT_SEARCH_INTENTS.forEach(it => {
+                                const itFacetLower = String(it.facet || '').toLowerCase();
+                                if (itFacetLower === efTagLower || itFacetLower === `tag_${efTagLower}` || (efTagLower === 'persname' && it.statement?.toLowerCase().includes('person'))) {
+                                    it.active = false;
+                                }
+                            });
+                            renderInteractiveIntentPills();
+                        }
+                        updateDashboard();
+                    };
+
+                    row.onclick = () => {
+                        if (isActive) {
+                            FILTERS.tagValues = (FILTERS.tagValues || []).filter(tv => {
+                                const tvTagLower = String(tv.tag || '').toLowerCase();
+                                const tvValLower = tv.value && tv.value !== 'true' ? String(tv.value).toLowerCase() : null;
+                                return !(tvTagLower === efTagLower && (!efValLower || tvValLower === efValLower));
+                            });
+                        } else {
+                            FILTERS.tagValues = FILTERS.tagValues || [];
+                            FILTERS.tagValues.push(ef.value ? { tag: ef.tag, value: ef.value } : { tag: ef.tag });
+                        }
+                        if (CURRENT_SEARCH_INTENTS) {
+                            CURRENT_SEARCH_INTENTS.forEach(it => {
+                                const itFacetLower = String(it.facet || '').toLowerCase();
+                                if (itFacetLower === efTagLower || itFacetLower === `tag_${efTagLower}` || (efTagLower === 'persname' && it.statement?.toLowerCase().includes('person'))) {
+                                    it.active = !isActive;
+                                }
+                            });
+                            renderInteractiveIntentPills();
+                        }
+                        updateDashboard();
+                    };
+
+                    extractedGrid.appendChild(row);
+                });
+
+                container.appendChild(extractedGrid);
+            }
+
             // Custom tags
             if (dynamicEntries.length > 0) {
                 renderSection('Custom Tags', dynamicEntries, 'border-t pt-1');
@@ -1552,24 +1825,19 @@
 
                 // Name Display
                 const nameDiv = content.append("div")
-                    .attr("class", d => "font-medium truncate flex-1 " + (FILTERS.topicId === d.id ? "text-amber-900" : "text-gray-700"))
+                    .attr("class", d => "font-medium truncate flex-1 " + (FILTERS.topicId === d.id ? "text-amber-900 font-bold" : "text-gray-700"))
                     .text(d => {
-                        // Use stored name if "meaningful", else construct from words
-                        if (d.name && d.name.length > 3 && !d.name.includes(",")) return d.name;
-
-                        // Fix for char-based tokens (e.g. "H, O, F")
-                        if (d.words && d.words.length > 0 && d.words[0].length === 1) {
-                            if (d.name.includes(",") && d.name.length < 20) {
-                                const fullText = d.words.join("").trim();
-                                const parts = fullText.split(/\s+/).filter(s => s.length > 0);
-                                return parts.slice(0, 4).join(" ");
-                            }
+                        if (d.name && !d.name.startsWith('Topic ')) {
+                            return d.name;
                         }
-                        return d.name;
+                        if (d.words && d.words.length > 0) {
+                            return d.words.slice(0, 3).join(", ");
+                        }
+                        return d.name || d.id;
                     })
                     .attr("title", d => {
                         const words = d.words ? d.words.slice(0, 15).join(", ") : "No keywords";
-                        return `Words: ${words}`;
+                        return `${d.name || d.id}\nTop Keywords: ${words}`;
                     });
 
                 // Edit Button (Visible on Hover)
@@ -1706,14 +1974,11 @@
             "unknown": "Unknown"
         };
 
-        function renderStatsLine(docs, eds) {
-            document.getElementById('statsline').innerHTML = `<span class="font-bold text-gray-900">${docs.toLocaleString()}</span> Documents | <span class="font-bold text-gray-900">${eds}</span> Editions`;
-        }
         function renderLangChart(langs) {
             const data = Object.entries(langs)
                 .map(([k, v]) => ({
                     key: k,
-                    label: LANGUAGE_NAMES[k] || k,
+                    label: LANGUAGE_NAMES[k] || DB_LANGUAGE_NAMES[k] || k,
                     value: v.total,
                     confirmed: v.confirmed,
                     inferred: v.inferred
@@ -1724,6 +1989,12 @@
                 FILTERS.lang = FILTERS.lang === d.key ? null : d.key;
                 updateDashboard();
             }, FILTERS.lang, true);
+        }
+        function renderLangNote(n) {
+            const el = document.getElementById('langNote');
+            if (!el) return;
+            el.classList.toggle('hidden', !n || VIEW_MODE === 'edition');
+            el.textContent = n ? `${n.toLocaleString()} document${n === 1 ? '' : 's'} without a detected language (too little text), not shown.` : '';
         }
         function renderTimeChart(yearMap) {
             const data = Object.entries(yearMap)
@@ -1743,21 +2014,39 @@
 
             const entries = Object.entries(cities)
                 .map(([name, val]) => ({ name, ...val }))
-                .filter(c => CITY_COORDS[c.name]) // Hide non-geocoded items from side facet
-                .sort((a, b) => b.total - a.total)
+                // Hide non-geocoded items from side facet (coords come from the DB API)
+                .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
+                // Places that satisfy the geography filter come first.
+                .sort((a, b) => (b.matched - a.matched) || (b.total - a.total))
                 .slice(0, 50);
 
+            // Say what the list is: which layer, and that non-highlighted places co-occur.
+            const caption = document.getElementById('cityListCaption');
+            const geoFilter = FILTERS.city || FILTERS.country || (FILTERS.place && FILTERS.place.key);
+            const unit = VIEW_MODE === 'document' ? 'documents' : 'editions';
+            if (caption) {
+                caption.innerHTML = geoFilter
+                    ? `${escapeHtml(GEO_SOURCE_LABELS[FILTERS.geoSource] || '')} of the matching ${unit}. <span class="text-amber-700 font-medium">Highlighted</span>: match “${escapeHtml(geoFilter)}”; others appear in the same ${unit}.`
+                    : `Count of ${unit} per place · ${escapeHtml(GEO_SOURCE_LABELS[FILTERS.geoSource] || '')}`;
+            }
+
+            const legendMatch = document.getElementById('legend-geo-match');
+            if (legendMatch) legendMatch.style.display = geoFilter ? 'flex' : 'none';
+
             if (entries.length === 0) return;
-            const maxVal = entries[0].total;
+            const maxVal = Math.max(...entries.map(e => e.total));
 
             const ul = document.createElement('ul');
             ul.className = "space-y-1";
             list.appendChild(ul);
 
             entries.forEach(c => {
-                const isActive = FILTERS.city === c.name;
+                const isActive = FILTERS.city === c.name || (FILTERS.place && FILTERS.place.key === c.name);
+                const isMatch = isActive || (geoFilter && c.matched);
                 const baseClass = "flex items-center gap-2 cursor-pointer p-1 rounded transition-colors text-xs ";
-                const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm" : "hover:bg-gray-100 border border-transparent";
+                const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm"
+                    : isMatch ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                    : "hover:bg-gray-100 border border-transparent";
 
                 const li = document.createElement("li");
                 const row = document.createElement("div");
@@ -1767,13 +2056,20 @@
 
                 // Name
                 const nameDiv = document.createElement("div");
-                nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isActive ? "text-amber-900" : "text-gray-700");
+                nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isMatch ? "text-amber-900" : (geoFilter ? "text-gray-500" : "text-gray-700"));
                 nameDiv.innerText = c.name;
+                if (c.approximate) {
+                    const approx = document.createElement("span");
+                    approx.className = "ml-1 text-[9px] font-normal text-gray-400";
+                    approx.innerText = "≈ country";
+                    approx.title = "Exact location unknown: shown at the centre of " + (c.country || "the country");
+                    nameDiv.appendChild(approx);
+                }
                 row.appendChild(nameDiv);
 
                 // Single-color bar (matches Topics style)
                 const bar = document.createElement("div");
-                bar.className = "h-1.5 rounded ml-2 " + (isActive ? "bg-amber-500" : "bg-sky-300");
+                bar.className = "h-1.5 rounded ml-2 " + (isMatch ? "bg-amber-500" : "bg-sky-300");
                 bar.style.width = `${(c.total / maxVal) * 50}px`;
                 bar.style.minWidth = c.total > 0 ? "2px" : "0px";
                 row.appendChild(bar);
@@ -1792,9 +2088,36 @@
         // --- Map Logic ---
         function initMap() {
             map = L.map('map').setView([48, 10], 4);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-            cityClusters = L.markerClusterGroup();
+            L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_2aq6_1_1525e2004869d5099678ffed', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            }).addTo(map);
+            // A cluster's number: distinct editions (edition mode) or places (document mode). The
+            // plugin's default counts markers, i.e. places, which read as editions/documents.
+            const clusterCount = (cluster) => {
+                const kids = cluster.getAllChildMarkers();
+                return VIEW_MODE === 'edition'
+                    ? new Set(kids.flatMap(m => m.options.eds || [])).size
+                    : kids.length;
+            };
+            cityClusters = L.markerClusterGroup({
+                iconCreateFunction: (cluster) => {
+                    const places = cluster.getChildCount();
+                    const size = places < 10 ? 'small' : places < 100 ? 'medium' : 'large';
+                    return L.divIcon({ html: `<div><span>${clusterCount(cluster).toLocaleString()}</span></div>`,
+                                       className: `marker-cluster marker-cluster-${size}`, iconSize: L.point(40, 40) });
+                },
+            });
+            cityClusters.on('clustermouseover', (e) => {
+                const places = e.layer.getChildCount();
+                const text = VIEW_MODE === 'edition'
+                    ? `${clusterCount(e.layer)} editions mention these ${places.toLocaleString()} places; zoom in for each place`
+                    : `${places.toLocaleString()} places; zoom in for their document counts`;
+                e.layer.bindTooltip(text, { direction: 'top' }).openTooltip();
+            });
             map.addLayer(cityClusters);
+            // Places that match the place filter are drawn outside the clusters, on top, so a selected
+            // place is visible at every zoom level.
+            matchLayer = L.featureGroup().addTo(map);
 
             // Fix for map visibility in flex containers
             setTimeout(() => {
@@ -1807,9 +2130,11 @@
                 updateDashboard();
             });
         }
+        let matchLayer = null;
         function updateMap(cityStats) {
             if (!cityClusters) return;
             cityClusters.clearLayers();
+            if (matchLayer) matchLayer.clearLayers();
 
             const entries = Object.entries(cityStats);
             let maxCount = 0;
@@ -1824,29 +2149,42 @@
 
                 if (count === 0) continue;
 
-                const coords = CITY_COORDS[cityName];
-                if (!coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') continue;
+                const coords = stats; // Coordinates are provided directly by DB API
+                if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) continue;
 
                 let radius = 6;
 
-                const marker = L.circleMarker([coords.lat, coords.lon], {
-                    radius: radius,
-                    fillColor: '#0ea5e9',
-                    color: '#0369a1',
+                const isMatch = (FILTERS.city || FILTERS.country || FILTERS.place) && stats.matched;
+                const marker = L.circleMarker([coords.lat, coords.lng], {
+                    radius: isMatch ? 9 : radius,
+                    dashArray: stats.approximate ? '2 2' : null,
+                    fillColor: isMatch ? '#f59e0b' : '#0ea5e9',
+                    color: isMatch ? '#b45309' : '#0369a1',
                     weight: 1,
                     opacity: 1,
-                    fillOpacity: 0.8
+                    fillOpacity: 0.8,
+                    eds: stats.eds || null
                 });
 
-                let tooltip = `<b>${cityName}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
+                let tooltip = `<b>${escapeHtml(cityName)}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
+                if (isMatch) tooltip += `<br/><span class="text-amber-700 text-[10px]">matches the place filter</span>`;
+                if (stats.approximate) tooltip += `<br/><span class="text-gray-500 text-[10px]">approximate: centre of ${escapeHtml(stats.country || 'the country')}</span>`;
                 if (stats.inferred > 0) {
                     tooltip += `<br/><span class="text-yellow-600 text-[10px]">(${stats.confirmed} confirmed, ${stats.inferred} inferred)</span>`;
                 }
 
                 marker.bindTooltip(tooltip);
                 marker.on('click', () => { toggleCity(cityName); });
-                cityClusters.addLayer(marker);
+                (isMatch && matchLayer ? matchLayer : cityClusters).addLayer(marker);
             }
+            if (matchLayer) {
+                matchLayer.eachLayer(m => m.bringToFront());
+                if (ZOOM_TO_MATCH && matchLayer.getLayers().length) {
+                    const b = matchLayer.getBounds();
+                    if (!map.getBounds().pad(-0.1).contains(b) || map.getZoom() < 5) map.flyToBounds(b.pad(0.5), { maxZoom: 8, duration: 0.6 });
+                }
+            }
+            ZOOM_TO_MATCH = false;
         }
 
         function handleBackgroundClick(e) {
@@ -1959,33 +2297,73 @@
                 .enter().append("g")
                 .attr("transform", d => `translate(${x(d.year)}, 0)`);
 
-            const activeColor = '#0ea5e9'; // Always Sky 500
+            // Update activeYearBadge
+            const yearBadge = document.getElementById('activeYearBadge');
+            if (yearBadge) {
+                if (FILTERS.yearRange && FILTERS.yearRange.length === 2) {
+                    const label = FILTERS.yearRange[0] === FILTERS.yearRange[1] 
+                        ? formatYear(FILTERS.yearRange[0])
+                        : `${formatYear(FILTERS.yearRange[0])}–${formatYear(FILTERS.yearRange[1])}`;
+                    yearBadge.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs";
+                    yearBadge.innerHTML = `<span>⏱️ <b>${label}</b></span><button onclick="clearYearFilter(event)" class="hover:text-red-700 font-bold ml-1 text-sm leading-none" title="Clear time filter">×</button>`;
+                } else {
+                    yearBadge.className = "hidden";
+                    yearBadge.innerHTML = "";
+                }
+            }
+
+            const isYearFiltered = FILTERS.yearRange && FILTERS.yearRange.length === 2;
+            const startYear = isYearFiltered ? FILTERS.yearRange[0] : null;
+            const endYear = isYearFiltered ? FILTERS.yearRange[1] : null;
 
             // 1. Unified Time Bar with Transitions
             bars.append("rect")
                 .attr("x", 0)
                 .attr("width", x.bandwidth())
-                .attr("fill", "#0ea5e9") // Solid Sky 500
+                .attr("fill", d => {
+                    if (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) {
+                        return "#f59e0b"; // Amber 500
+                    }
+                    return isYearFiltered ? "#cbd5e1" : "#0ea5e9";
+                })
+                .attr("stroke", d => {
+                    if (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) {
+                        return "#b45309";
+                    }
+                    return "none";
+                })
+                .attr("stroke-width", d => (isYearFiltered && d.year + 4 >= startYear && d.year <= endYear) ? 1.5 : 0)
+                .style("cursor", "pointer")
                 .attr("y", h - margin.bottom)
                 .attr("height", 0)
+                .on("click", (e, d) => {
+                    e.stopPropagation();
+                    if (FILTERS.yearRange && FILTERS.yearRange[0] === d.year && FILTERS.yearRange[1] === d.year + 4) {
+                        FILTERS.yearRange = null;
+                    } else {
+                        FILTERS.yearRange = [d.year, d.year + 4];
+                    }
+                    updateDashboard();
+                })
                 .transition()
                 .duration(750)
                 .ease(d3.easeCubicOut)
                 .attr("y", d => y(d.count))
                 .attr("height", d => y(0) - y(d.count));
 
-            bars.append("title").text(d => `Time: ${d.year}-${d.year + 4}\nCount: ${d.count}`);
+            bars.append("title").text(d => `Time: ${formatYear(d.year)}–${formatYear(d.year + 4)}\n${VIEW_MODE === 'edition' ? 'Editions' : 'Documents'}: ${d.count.toLocaleString()} (Click to filter)`);
 
             // X Axis
             if (x.bandwidth() > 0) {
                 // Responsive Ticks: calculate interval based on width
-                let tickInterval = 10; // Default (50 years)
-                if (w < 500) tickInterval = 40; // 200 years
-                else if (w < 1000) tickInterval = 20; // 100 years
+                // About one label per 90 px, on round years (multiples of 50/100/250/500).
+                const span = x.domain().length * 5;
+                const maxLabels = Math.max(3, Math.floor(w / 90));
+                const step = [50, 100, 250, 500, 1000].find(s => span / s <= maxLabels) || 1000;
 
                 const xAxis = d3.axisBottom(x)
-                    .tickValues(x.domain().filter((d, i) => i % tickInterval === 0))
-                    .tickFormat(d => d);
+                    .tickValues(x.domain().filter(d => d % step === 0))
+                    .tickFormat(d => formatYear(d));
 
                 svg.append("g")
                     .attr("transform", `translate(0,${h - margin.bottom})`)
@@ -2075,7 +2453,494 @@
             }
         }
 
+        // --- Subset Inspector Modal ---
+        let CURRENT_SUBSET_DATA = { totalDocs: 0, totalEditions: 0, editions: [], documents: [] };
+        let CURRENT_SUBSET_TAB = 'editions';
+        let SELECTED_EDITION_DRILLDOWN = null;
+
+        function openSubsetModal(tab = 'editions') {
+            CURRENT_SUBSET_TAB = tab;
+            if (tab === 'editions') {
+                SELECTED_EDITION_DRILLDOWN = null;
+            }
+            const modal = document.getElementById('subsetModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                document.getElementById('subsetSearchInput').value = '';
+                renderSubsetModalContent();
+            }
+        }
+
+        function closeSubsetModal() {
+            const modal = document.getElementById('subsetModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function switchSubsetTab(tab) {
+            CURRENT_SUBSET_TAB = tab;
+            renderSubsetModalContent();
+        }
+
+        let DRILLDOWN_DOCS_CACHE = {};
+
+        async function drillDownToEditionDocs(editionName) {
+            SELECTED_EDITION_DRILLDOWN = editionName;
+            CURRENT_SUBSET_TAB = 'docs';
+            renderSubsetModalContent();
+            
+            // Fetch live documents for this edition from API
+            try {
+                const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim();
+                const res = await fetch(`/api/document?edition=${encodeURIComponent(editionName)}&search=${encodeURIComponent(searchVal)}&limit=300`);
+                if (res.ok) {
+                    const data = await res.json();
+                    DRILLDOWN_DOCS_CACHE[editionName] = data.documents || [];
+                    renderSubsetModalContent();
+                }
+            } catch (err) {
+                console.error('Error fetching edition documents:', err);
+            }
+        }
+
+        function clearEditionDrillDown() {
+            SELECTED_EDITION_DRILLDOWN = null;
+            renderSubsetModalContent();
+        }
+
+        async function filterSubsetItems() {
+            if (CURRENT_SUBSET_TAB === 'docs' && SELECTED_EDITION_DRILLDOWN) {
+                const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim();
+                try {
+                    const res = await fetch(`/api/document?edition=${encodeURIComponent(SELECTED_EDITION_DRILLDOWN)}&search=${encodeURIComponent(searchVal)}&limit=300`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN] = data.documents || [];
+                    }
+                } catch (err) {
+                    console.error('Error searching edition documents:', err);
+                }
+            }
+            renderSubsetModalContent();
+        }
+
+        function renderSubsetModalContent() {
+            const body = document.getElementById('subsetModalBody');
+            const edCountSpan = document.getElementById('subsetModalEdCount');
+            const docCountSpan = document.getElementById('subsetModalDocCount');
+            const badge = document.getElementById('subsetModalBadge');
+            const subtitle = document.getElementById('subsetModalSubtitle');
+            const tabEd = document.getElementById('tabBtnEditions');
+            const tabDoc = document.getElementById('tabBtnDocs');
+            const footerStats = document.getElementById('subsetModalFooterStats');
+            const searchVal = (document.getElementById('subsetSearchInput')?.value || '').trim().toLowerCase();
+
+            if (!body) return;
+
+            const totalDocs = CURRENT_SUBSET_DATA.totalDocs || 0;
+            const totalEds = (CURRENT_SUBSET_DATA.editions || []).length;
+            edCountSpan.textContent = totalEds.toLocaleString();
+            docCountSpan.textContent = totalDocs.toLocaleString();
+
+            badge.textContent = `${totalDocs.toLocaleString()} Docs / ${totalEds.toLocaleString()} Editions`;
+            subtitle.textContent = SEARCH_APPLIED 
+                ? "Active Filters & Intents applied" 
+                : "Complete unconstrained digital corpus";
+
+            if (CURRENT_SUBSET_TAB === 'editions') {
+                tabEd.className = "px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
+                tabDoc.className = "px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent";
+
+                const editions = (CURRENT_SUBSET_DATA.editions || []).filter(ed => {
+                    if (!searchVal) return true;
+                    return (ed.name || '').toLowerCase().includes(searchVal) || (ed.description || '').toLowerCase().includes(searchVal);
+                });
+
+                if (editions.length === 0) {
+                    body.innerHTML = `<div class="text-center py-12 text-gray-400 text-sm">No matching editions found.</div>`;
+                    footerStats.textContent = `Showing 0 of ${totalEds.toLocaleString()} editions`;
+                    return;
+                }
+
+                footerStats.textContent = `Showing ${editions.length.toLocaleString()} of ${totalEds.toLocaleString()} editions in view (Click an edition to drill down to its documents)`;
+
+                const maxCount = Math.max(...editions.map(e => e.count), 1);
+
+                body.innerHTML = `
+                    <div class="space-y-2">
+                        ${editions.map(ed => {
+                            const label = (ed.name || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                            const pct = totalDocs > 0 ? ((ed.count / totalDocs) * 100).toFixed(1) : 0;
+                            const barWidth = Math.max((ed.count / maxCount) * 100, 2);
+
+                            return `
+                                <div onclick="drillDownToEditionDocs('${escapeHtml(ed.name)}')" class="p-3 rounded-lg border border-gray-200 bg-white hover:border-amber-400 hover:shadow-sm cursor-pointer transition-all flex items-center justify-between gap-4 group">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="font-bold text-gray-900 text-sm truncate group-hover:text-amber-900 transition-colors">${escapeHtml(label)}</h4>
+                                            <span class="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">${escapeHtml(ed.name)}</span>
+                                        </div>
+                                        ${ed.description && ed.description !== `Description for ${ed.name}` ? `<p class="text-xs text-gray-500 truncate mt-0.5">${escapeHtml(ed.description)}</p>` : ''}
+                                        <div class="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div class="bg-amber-500 h-full rounded-full" style="width: ${barWidth}%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-3 shrink-0">
+                                        <div class="text-right">
+                                            <div class="text-base font-bold text-gray-900">${ed.count.toLocaleString()} <span class="text-xs font-normal text-gray-500">docs (${pct}%)</span></div>
+                                        </div>
+                                        <button type="button" class="px-2.5 py-1 text-xs font-semibold bg-gray-100 group-hover:bg-amber-100 group-hover:text-amber-900 text-gray-700 rounded border border-gray-200 group-hover:border-amber-300 transition-colors">
+                                            📄 View Docs &rarr;
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+
+            } else {
+                tabDoc.className = "px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
+                tabEd.className = "px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent";
+
+                let docs = [];
+                
+                // If drilldown active, use cached edition docs or subset docs
+                if (SELECTED_EDITION_DRILLDOWN) {
+                    if (DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN]) {
+                        docs = DRILLDOWN_DOCS_CACHE[SELECTED_EDITION_DRILLDOWN];
+                    } else {
+                        docs = (CURRENT_SUBSET_DATA.documents || []).filter(d => d.edition_name === SELECTED_EDITION_DRILLDOWN);
+                    }
+                } else {
+                    docs = (CURRENT_SUBSET_DATA.documents || []);
+                }
+
+                if (searchVal) {
+                    docs = docs.filter(d => (d.name || '').toLowerCase().includes(searchVal) || (d.edition_name || '').toLowerCase().includes(searchVal) || String(d.id).includes(searchVal));
+                }
+
+                const edObj = (CURRENT_SUBSET_DATA.editions || []).find(e => e.name === SELECTED_EDITION_DRILLDOWN);
+                const totalEditionDocs = edObj ? edObj.count : docs.length;
+
+                const drilldownBanner = SELECTED_EDITION_DRILLDOWN ? `
+                    <div class="mb-3 px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-amber-950">Drilldown Filter:</span>
+                            <span class="px-2 py-0.5 rounded bg-amber-200 text-amber-950 font-bold">${escapeHtml(SELECTED_EDITION_DRILLDOWN.replace(/_/g, ' '))}</span>
+                            <span class="text-gray-500">(${docs.length} documents loaded of ${totalEditionDocs.toLocaleString()} total)</span>
+                        </div>
+                        <button type="button" onclick="clearEditionDrillDown()" class="px-2 py-0.5 bg-white text-amber-900 hover:bg-amber-100 border border-amber-300 rounded font-semibold text-xs transition-colors cursor-pointer">
+                            Show All Editions &times;
+                        </button>
+                    </div>
+                ` : '';
+
+                if (docs.length === 0) {
+                    body.innerHTML = `
+                        ${drilldownBanner}
+                        <div class="text-center py-12 text-gray-400 text-sm">
+                            <svg class="animate-spin h-5 w-5 text-amber-500 inline mr-2" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span>Loading documents for ${escapeHtml(SELECTED_EDITION_DRILLDOWN || 'edition')}...</span>
+                        </div>
+                    `;
+                    footerStats.textContent = `Loading documents...`;
+                    return;
+                }
+
+                footerStats.textContent = SELECTED_EDITION_DRILLDOWN 
+                    ? `Showing ${docs.length.toLocaleString()} documents from ${SELECTED_EDITION_DRILLDOWN} (Total in edition: ${totalEditionDocs.toLocaleString()})`
+                    : `Displaying first ${docs.length.toLocaleString()} matching documents (from ${totalDocs.toLocaleString()} total docs)`;
+
+                body.innerHTML = `
+                    ${drilldownBanner}
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase font-semibold">
+                                <tr>
+                                    <th class="px-4 py-2.5 w-20">Doc ID</th>
+                                    <th class="px-4 py-2.5">Document File / Slug</th>
+                                    <th class="px-4 py-2.5">Edition</th>
+                                    <th class="px-4 py-2.5 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                ${docs.map((d, i) => `
+                                    <tr onclick="openDocumentReader(${d.id})" class="hover:bg-amber-50/40 cursor-pointer transition-colors">
+                                        <td class="px-4 py-2.5 font-mono text-gray-400">${d.id}</td>
+                                        <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(d.name)}</td>
+                                        <td class="px-4 py-2 text-gray-600">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800">
+                                                ${escapeHtml(editionLabel(d.edition_name || SELECTED_EDITION_DRILLDOWN || ''))}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2.5 text-right">
+                                            <button type="button" onclick="event.stopPropagation(); openDocumentReader(${d.id})" class="px-2.5 py-1 text-[11px] font-semibold bg-gray-100 hover:bg-amber-100 hover:text-amber-950 border border-gray-200 hover:border-amber-300 rounded cursor-pointer transition-all inline-flex items-center gap-1">
+                                                <span>🔍 Tags & Entities</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
+
+        // --- Document Details (Extracted Tags & Entities Modal) ---
+        let CURRENT_DOC_DATA = null;
+
+        async function openDocumentReader(docId) {
+            const modal = document.getElementById('docReaderModal');
+            const titleEl = document.getElementById('docReaderTitle');
+            const editionEl = document.getElementById('docReaderEdition');
+            const metaBadgesEl = document.getElementById('docReaderMetaBadges');
+            const bodyEl = document.getElementById('docReaderBody');
+
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            titleEl.textContent = `Document #${docId}`;
+            editionEl.textContent = '';
+            metaBadgesEl.innerHTML = '';
+            bodyEl.innerHTML = `<div class="flex items-center justify-center py-24 text-gray-400 text-sm gap-2">
+                <svg class="animate-spin h-5 w-5 text-sky-600 inline" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span>Loading document…</span>
+            </div>`;
+
+            try {
+                const res = await fetch(`/api/document?id=${docId}`);
+                if (!res.ok) throw new Error('Failed to load document details');
+                const doc = await res.json();
+                CURRENT_DOC_DATA = doc;
+                renderDocumentReaderContent();
+            } catch (err) {
+                console.error(err);
+                bodyEl.innerHTML = `<div class="p-8 text-center text-rose-500 font-medium">${escapeHtml(err.message || 'Error loading document')}</div>`;
+            }
+        }
+
+        function closeDocumentReader() {
+            const modal = document.getElementById('docReaderModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function renderDocumentReaderContent() {
+            if (!CURRENT_DOC_DATA) return;
+            const doc = CURRENT_DOC_DATA;
+            const titleEl = document.getElementById('docReaderTitle');
+            const editionEl = document.getElementById('docReaderEdition');
+            const metaBadgesEl = document.getElementById('docReaderMetaBadges');
+            const bodyEl = document.getElementById('docReaderBody');
+
+            titleEl.textContent = doc.name;
+            editionEl.textContent = editionLabel(doc.edition);
+
+            // The header only identifies the document; everything extracted
+            // from it is shown in the body, in two labelled sections.
+            metaBadgesEl.innerHTML = `<span class="text-xs text-gray-500">Document ID ${doc.id}</span>`;
+
+            const SOURCE_ORDER = ['creation', 'publication', 'contextual'];
+            const SOURCE_LABEL = { creation: 'Creation', publication: 'Publication', contextual: 'Mentioned in text' };
+            const chip = (text, tone) =>
+                `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${tone}">${escapeHtml(String(text))}</span>`;
+            const TONE = {
+                date: 'bg-amber-50 text-amber-900 border-amber-200',
+                place: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+                lang: 'bg-blue-50 text-blue-900 border-blue-200',
+                topic: 'bg-purple-50 text-purple-900 border-purple-200',
+            };
+
+            // Group values by their source type (creation / publication / contextual).
+            function groupedChips(items, typeKey, valueOf, tone) {
+                const groups = new Map();
+                for (const it of items) {
+                    const type = it[typeKey] || 'other';
+                    if (!groups.has(type)) groups.set(type, new Set());
+                    groups.get(type).add(valueOf(it));
+                }
+                const types = [...groups.keys()].sort((a, b) =>
+                    (SOURCE_ORDER.indexOf(a) + 1 || 99) - (SOURCE_ORDER.indexOf(b) + 1 || 99));
+                return types.map(type => `
+                    <div class="flex flex-wrap items-baseline gap-1.5">
+                        <span class="text-[11px] text-gray-500 w-32 shrink-0">${escapeHtml(SOURCE_LABEL[type] || type)}</span>
+                        <div class="flex flex-wrap gap-1.5 flex-1">${[...groups.get(type)].sort().map(v => chip(v, tone)).join('')}</div>
+                    </div>`).join('');
+            }
+
+            const none = `<span class="text-xs text-gray-400">None extracted</span>`;
+            const metaRows = [
+                ['Dates', doc.dates && doc.dates.length
+                    ? groupedChips(doc.dates, 'date_type', d => formatYear(d.year), TONE.date) : none],
+                ['Places', doc.places && doc.places.length
+                    ? groupedChips(doc.places, 'geo_type', pl => pl.name, TONE.place) : none],
+                ['Language', doc.languages && doc.languages.length
+                    ? `<div class="flex flex-wrap gap-1.5">${doc.languages.map(l => chip(l.name && l.name !== l.iso ? `${l.name} (${l.iso})` : l.iso, TONE.lang)).join('')}</div>` : none],
+                ['Topic', doc.topics && doc.topics.length
+                    ? `<div class="flex flex-wrap gap-1.5">${doc.topics.map(t => chip(t.name, TONE.topic)).join('')}</div>` : none],
+            ].filter(([label]) => SHOW_TOPICS || label !== 'Topic');
+
+            const metadataSection = `
+                <section>
+                    <div class="flex items-baseline justify-between mb-2">
+                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">Extracted metadata</h4>
+                        <span class="text-[11px] text-gray-500">Values used by the dashboard filters</span>
+                    </div>
+                    <dl class="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        ${metaRows.map(([label, html]) => `
+                            <div class="grid grid-cols-[6.5rem_1fr] gap-3 px-4 py-2.5">
+                                <dt class="text-xs font-semibold text-gray-600 pt-0.5">${label}</dt>
+                                <dd class="space-y-1.5">${html}</dd>
+                            </div>`).join('')}
+                    </dl>
+                </section>`;
+
+            const tagRows = doc.tagValues || [];
+            const tagEmptyText = doc.tagValuesAvailable === false
+                ? 'The TEI tag-value index has not been built on this database yet (migrations 006 and 007).'
+                : 'No TEI tag values were indexed for this document.';
+            const tagSection = `
+                <section>
+                    <div class="flex items-baseline justify-between mb-2">
+                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">TEI tag values${tagRows.length ? ` (${doc.tagValuesTotal > tagRows.length ? `top ${tagRows.length} of ${doc.tagValuesTotal.toLocaleString()}` : tagRows.length})` : ''}</h4>
+                        <span class="text-[11px] text-gray-500">Indexed elements only (names, places, dates, titles, …), most frequent first</span>
+                    </div>
+                    ${tagRows.length === 0
+                        ? `<div class="border border-dashed border-gray-200 rounded-lg px-4 py-6 text-center text-xs text-gray-500">${tagEmptyText}</div>`
+                        : `<div class="overflow-x-auto border border-gray-200 rounded-lg">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
+                                    <tr>
+                                        <th class="px-4 py-2.5 w-36">TEI element</th>
+                                        <th class="px-4 py-2.5">Value</th>
+                                        <th class="px-4 py-2.5 w-24 text-right">Occurrences</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    ${tagRows.map(tr => `
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-4 py-2 font-mono text-sky-700 font-semibold">&lt;${escapeHtml(tr.tag_name)}&gt;</td>
+                                            <td class="px-4 py-2 text-gray-900">${escapeHtml(tr.value)}</td>
+                                            <td class="px-4 py-2 text-right text-gray-500 font-mono">${tr.count}</td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>`}
+                </section>`;
+
+            // The full source file. Large files are shown in part (the browser would stall), with the
+            // whole file available as a download.
+            const XML_SHOW = 300000;
+            const xml = doc.xml || '';
+            const xmlSection = `
+                <section>
+                    <details id="docXmlDetails" class="border border-gray-200 rounded-lg">
+                        <summary class="cursor-pointer select-none px-4 py-2.5 flex items-baseline justify-between">
+                            <span class="font-bold text-xs text-gray-700 uppercase tracking-wide">Source XML</span>
+                            <span class="text-[11px] text-gray-500">${xml
+                                ? `${escapeHtml(doc.filePath || '')} · ${(new Blob([xml]).size / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB`
+                                : 'Not available here (the XML files are only on the local server)'}</span>
+                        </summary>
+                        ${xml ? `
+                        <div class="border-t border-gray-200">
+                            <div class="flex items-center justify-between px-4 py-1.5 bg-gray-50 text-[11px] text-gray-500">
+                                <span>${xml.length > XML_SHOW ? `Showing the first ${XML_SHOW.toLocaleString()} of ${xml.length.toLocaleString()} characters` : 'Complete file'}</span>
+                                <a id="docXmlDownload" class="text-sky-700 hover:underline" href="#">Download XML</a>
+                            </div>
+                            <pre id="docXmlPre" class="text-[11px] leading-snug font-mono whitespace-pre-wrap break-all px-4 py-3 max-h-[28rem] overflow-auto bg-white"></pre>
+                        </div>` : ''}
+                    </details>
+                </section>`;
+
+            bodyEl.innerHTML = `<div class="space-y-6">${metadataSection}${tagSection}${xmlSection}</div>`;
+            if (xml) {
+                const pre = document.getElementById('docXmlPre');
+                const details = document.getElementById('docXmlDetails');
+                details.addEventListener('toggle', () => {
+                    if (details.open && !pre.textContent) pre.textContent = xml.slice(0, XML_SHOW);
+                });
+                document.getElementById('docXmlDownload').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+                    const a = Object.assign(document.createElement('a'), { href: url, download: (doc.filePath || `${doc.name}.xml`).split('/').pop() });
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                });
+            }
+        }
+
     </script>
+
+    <!-- Filtered Subset Viewer Modal -->
+    <div id="subsetModal" class="hidden fixed inset-0 z-[2000] overflow-y-auto bg-black/40 flex items-center justify-center p-4" onclick="if(event.target === this) closeSubsetModal()">
+        <div class="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/80">
+                <div>
+                    <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <span>Filtered Subset Inspector</span>
+                        <span id="subsetModalBadge" class="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-900 border border-amber-300"></span>
+                    </h3>
+                    <p id="subsetModalSubtitle" class="text-xs text-gray-500 mt-0.5"></p>
+                </div>
+                <button type="button" onclick="closeSubsetModal()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1 leading-none cursor-pointer">&times;</button>
+            </div>
+
+            <!-- Tab Controls & Search -->
+            <div class="flex items-center justify-between px-6 py-2.5 border-b border-gray-200 bg-white">
+                <div class="flex gap-2">
+                    <button type="button" id="tabBtnEditions" onclick="switchSubsetTab('editions')" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
+                        📚 Editions in view (<span id="subsetModalEdCount">0</span>)
+                    </button>
+                    <button type="button" id="tabBtnDocs" onclick="switchSubsetTab('docs')" class="px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-all border border-transparent cursor-pointer">
+                        📄 Documents in view (<span id="subsetModalDocCount">0</span>)
+                    </button>
+                </div>
+                <div class="relative w-64">
+                    <input type="text" id="subsetSearchInput" oninput="filterSubsetItems()" placeholder="Filter items..." class="w-full text-xs border border-gray-300 rounded px-2.5 py-1 focus:ring-1 focus:ring-blue-500 focus:outline-none pr-6">
+                    <button type="button" onclick="document.getElementById('subsetSearchInput').value=''; filterSubsetItems();" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">&times;</button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div id="subsetModalBody" class="flex-1 overflow-y-auto p-6 min-h-[300px] max-h-[55vh]">
+                <!-- Dynamic Content -->
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span id="subsetModalFooterStats"></span>
+                <button type="button" onclick="closeSubsetModal()" class="px-4 py-1.5 bg-gray-800 text-white rounded font-medium hover:bg-gray-700 transition-colors cursor-pointer">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Document Details (Extracted Tags & Entities Modal) -->
+    <div id="docReaderModal" class="hidden fixed inset-0 z-[3000] overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" onclick="if(event.target === this) closeDocumentReader()">
+        <div class="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 id="docReaderTitle" class="text-base font-bold text-gray-900">Document Information</h3>
+                        <span id="docReaderEdition" class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-200 text-gray-800"></span>
+                    </div>
+                    <div id="docReaderMetaBadges" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+                </div>
+                <button type="button" onclick="closeDocumentReader()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1 leading-none cursor-pointer">&times;</button>
+            </div>
+
+            <!-- Content Area -->
+            <div id="docReaderBody" class="flex-1 overflow-y-auto p-6 min-h-[350px] max-h-[60vh] bg-white">
+                <!-- Dynamic Content -->
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span>Metadata and TEI values extracted during ingestion</span>
+                <button type="button" onclick="closeDocumentReader()" class="px-4 py-1.5 bg-gray-800 text-white rounded font-medium hover:bg-gray-700 transition-colors cursor-pointer">Close</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

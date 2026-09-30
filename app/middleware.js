@@ -4,33 +4,42 @@ export const config = {
 };
 
 export default function middleware(request) {
-  const authorization = request.headers.get('authorization');
+  const url = new URL(request.url);
+  const path = url.pathname;
 
-  if (authorization) {
-    const [scheme, encoded] = authorization.split(' ');
-    if (scheme.toLowerCase() === 'basic') {
-      try {
-        const decoded = atob(encoded);
-        const [user, password] = decoded.split(':');
+  // Lock down only the upload page, upload API, pre-analysis, and management API endpoints
+  if (path === '/upload.html' || path === '/upload' || path.startsWith('/api/upload') || path.startsWith('/api/analyze') || path.startsWith('/api/manage')) {
+    const authorization = request.headers.get('authorization');
 
-        if (
-          user === process.env.BASIC_AUTH_USER &&
-          password === process.env.BASIC_AUTH_PASSWORD
-        ) {
-          // Allow the request to proceed
-          return;
+    if (authorization) {
+      const [scheme, encoded] = authorization.split(' ');
+      if (scheme.toLowerCase() === 'basic') {
+        try {
+          const decoded = atob(encoded);
+          const [user, password] = decoded.split(':');
+
+          if (
+            user === process.env.BASIC_AUTH_USER &&
+            password === process.env.BASIC_AUTH_PASSWORD
+          ) {
+            // Allow the request to proceed
+            return;
+          }
+        } catch (e) {
+          console.error('Auth error:', e);
         }
-      } catch (e) {
-        console.error('Auth error:', e);
       }
     }
+
+    // Trigger login prompt
+    return new Response('Authentication Required', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Basic realm="Secure Area"',
+      },
+    });
   }
 
-  // Trigger login prompt
-  return new Response('Authentication Required', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Secure Area"',
-    },
-  });
+  // Allow all other paths to proceed publicly
+  return;
 }
