@@ -12,8 +12,14 @@ export default async function handler(req, res) {
     const hasTagValues = schema.has('document_tag_values');
     // Countries, regions, water bodies and fragments are not settlements: keep
     // them out of the Places list and the map (they can still match filters).
-    const settlementsOnly = schema.hasColumn('geolocations', 'place_type')
-      ? "AND (g.place_type IS NULL OR g.place_type = 'settlement')" : '';
+    // 'approximate' = a settlement known only at country level; its point is the
+    // country centre (kept as a fallback, see data/geo_audit/phase1_followup.py).
+    const hasPlaceType = schema.hasColumn('geolocations', 'place_type');
+    const settlementsOnly = hasPlaceType
+      ? "AND (g.place_type IS NULL OR g.place_type IN ('settlement', 'approximate', 'ancient_place'))" : '';
+    // A precise point wins over a country-centre fallback of the same name.
+    const precise = hasPlaceType ? "FILTER (WHERE g.place_type IS DISTINCT FROM 'approximate')" : '';
+    const approxExpr = hasPlaceType ? "BOOL_AND(g.place_type IS NOT DISTINCT FROM 'approximate')" : 'FALSE';
     // Filters we had to skip because their tables are not migrated yet.
     const warnings = [];
 
@@ -24,8 +30,14 @@ export default async function handler(req, res) {
       const editionsRes = await dbPool.query(
         `SELECT name, ${displayName}, description, website, number_documents, size_in_mb
            FROM editions WHERE is_excluded = FALSE ORDER BY name;`);
-      const languagesRes = await dbPool.query('SELECT name, iso_code FROM languages ORDER BY name;');
-      const topicsRes = await dbPool.query('SELECT id, name, words FROM topics ORDER BY id;');
+      const languagesRes = await dbPool.query(
+        "SELECT name, iso_code FROM languages WHERE iso_code NOT IN ('und', 'mul', 'zxx') ORDER BY name;");
+      // v2 builds keep only topic models that passed the evaluation (data/build/ordx/topics.py), one per
+      // language; older databases have the near-uniform FASTopic clusters, which stay hidden.
+      const topicsV2 = schema.hasColumn('topics', 'lang');
+      const topicsRes = await dbPool.query(topicsV2
+        ? 'SELECT id, name, words, lang, coherence FROM topics ORDER BY lang, id;'
+        : 'SELECT id, name, words FROM topics ORDER BY id;');
       const featuresRes = await dbPool.query(
         'SELECT name, type FROM attributes_metadata WHERE NOT (name = ANY($1::text[])) ORDER BY name;',
         [PSEUDO_ATTRIBUTES]);
@@ -42,6 +54,7 @@ export default async function handler(req, res) {
         editions: editionsRes.rows,
         languages: languagesRes.rows,
         topics: topicsRes.rows,
+        topicsEvaluated: topicsV2 && topicsRes.rows.length > 0,
         features: featuresRes.rows,
         properties: propertiesRows,
       });
@@ -62,6 +75,11 @@ export default async function handler(req, res) {
     // A document matches if it carries ANY of the tags.
     const customFilters = parseCustomFilters(req.body.customFilters);
     const customByKey = new Map(customFilters.map((f) => [f.key, f.tags]));
+    // Saved custom tags (api/custom_tags.js): their documents are stored, so they filter and count by join.
+    const savedTags = new Map();
+    if ((await dbPool.query("SELECT to_regclass('custom_tags') IS NOT NULL AS ok")).rows[0].ok) {
+      (await dbPool.query('SELECT id, key FROM custom_tags')).rows.forEach((r) => savedTags.set(r.key, r.id));
+    }
 
     // Build dynamic where clauses and params
     const clauses = ['d.is_excluded = FALSE', 'e.is_excluded = FALSE'];
@@ -118,6 +136,21 @@ export default async function handler(req, res) {
       paramIndex += 2;
     }
 
+    // Exact place, from a click on the map or the Places list: that one place (name + country),
+    // not every place whose name contains the text (Bülach must not also select Bachenbülach).
+    const place = filters.place && typeof filters.place === 'object' && filters.place.name ? filters.place : null;
+    if (place) {
+      clauses.push(`EXISTS (
+        SELECT 1 FROM document_geolocations dg
+        JOIN geolocations g ON dg.geolocation_id = g.id
+        WHERE dg.document_id = d.id
+          AND dg.geo_type = $${paramIndex}
+          AND g.name = $${paramIndex + 1} AND COALESCE(g.country, '') = $${paramIndex + 2}
+      )`);
+      params.push(geoSource, place.name, place.country || '');
+      paramIndex += 3;
+    }
+
     // Country filter
     if (filters.country) {
       let countryPatterns = [`%${filters.country}%`];
@@ -154,7 +187,13 @@ export default async function handler(req, res) {
       const { key, value } = filters.feature;
       const existOperator = value === false ? 'NOT EXISTS' : 'EXISTS';
 
-      if (key.startsWith(CUSTOM_PREFIX)) {
+      if (key.startsWith(CUSTOM_PREFIX) && savedTags.has(key)) {
+        clauses.push(`${existOperator} (
+          SELECT 1 FROM custom_tag_documents ctd WHERE ctd.document_id = d.id AND ctd.tag_id = $${paramIndex}
+        )`);
+        params.push(savedTags.get(key));
+        paramIndex++;
+      } else if (key.startsWith(CUSTOM_PREFIX)) {
         const tags = customByKey.get(key);
         if (!tags) {
           return res.status(400).json({
@@ -357,7 +396,15 @@ export default async function handler(req, res) {
       `;
       const langAgg = await client.query(langQuery);
       const langsMap = {};
-      langAgg.rows.forEach(r => {
+      // 'und' (not detectable: too little text), 'mul' and 'zxx' are not languages; they stay
+      // out of the chart and are reported as one count under it.
+      const NON_LANGUAGE = ['und', 'mul', 'zxx'];
+      const noLangRes = await client.query(`
+        SELECT COUNT(*)::int AS n FROM temp_docs t
+         WHERE NOT EXISTS (SELECT 1 FROM document_languages dl JOIN languages l ON l.id = dl.language_id
+                            WHERE dl.document_id = t.id AND NOT (l.iso_code = ANY($1::text[])))`, [NON_LANGUAGE]);
+      const langsUnassigned = noLangRes.rows[0].n;
+      langAgg.rows.filter(r => !NON_LANGUAGE.includes(r.lang)).forEach(r => {
         langsMap[r.lang] = {
           total: parseInt(r.total),
           confirmed: parseInt(r.confirmed),
@@ -384,9 +431,11 @@ export default async function handler(req, res) {
       const geoQuery = `
         SELECT g.name as city,
                MAX(g.country) as country,
-               AVG(ST_Y(g.geometry)) as lat,
-               AVG(ST_X(g.geometry)) as lng,
+               COALESCE(AVG(ST_Y(g.geometry)) ${precise}, AVG(ST_Y(g.geometry))) as lat,
+               COALESCE(AVG(ST_X(g.geometry)) ${precise}, AVG(ST_X(g.geometry))) as lng,
+               ${approxExpr} as approximate,
                ${countExpr} as total,
+               ${viewMode === 'edition' ? 'ARRAY_AGG(DISTINCT t.edition_id)' : 'NULL::int[]'} as eds,
                ${geoMatchPatterns
                  ? 'BOOL_OR(g.name ILIKE ANY($2::text[]) OR g.country ILIKE ANY($2::text[]))'
                  : 'FALSE'} as matched
@@ -394,21 +443,27 @@ export default async function handler(req, res) {
         JOIN document_geolocations dg ON t.id = dg.document_id
         JOIN geolocations g ON dg.geolocation_id = g.id
         WHERE dg.geo_type = $1 ${settlementsOnly}
-        GROUP BY g.name;
+        GROUP BY g.name, g.country_code;
       `;
       const geoAgg = await client.query(geoQuery, geoMatchPatterns ? [geoSource, geoMatchPatterns] : [geoSource]);
       const citiesMap = {};
       geoAgg.rows.forEach(r => {
-        const cleanName = (r.city || '').trim();
+        let cleanName = (r.city || '').trim();
         if (!cleanName) return;
+        // Two different places with the same name (Paris FR / Paris US) stay apart.
+        if (citiesMap[cleanName] && r.country) cleanName = `${cleanName} (${r.country})`;
         citiesMap[cleanName] = {
+          name: r.city,
           total: parseInt(r.total),
           confirmed: parseInt(r.total),
           inferred: 0,
           lat: parseFloat(r.lat),
           lng: parseFloat(r.lng),
           country: r.country,
-          matched: r.matched === true, // satisfies the active geography filter
+          matched: r.matched === true
+            || Boolean(place && r.city === place.name && (r.country || '') === (place.country || '')),
+          approximate: r.approximate === true, // only a country-centre point is known
+          ...(r.eds ? { eds: r.eds } : {}),     // edition mode: lets map clusters count distinct editions
         };
       });
 
@@ -437,7 +492,15 @@ export default async function handler(req, res) {
       const customCountExpr = viewMode === 'edition'
         ? 'COUNT(DISTINCT t.edition_id)'
         : 'COUNT(t.id)';
-      for (const { key, tags } of customFilters) {
+      if (savedTags.size) {
+        const savedAgg = await client.query(`
+          SELECT ct.key, ${customCountExpr} AS count
+            FROM temp_docs t JOIN custom_tag_documents ctd ON ctd.document_id = t.id
+            JOIN custom_tags ct ON ct.id = ctd.tag_id GROUP BY ct.key`);
+        savedTags.forEach((_, key) => { featuresMap[key] = 0; });
+        savedAgg.rows.forEach((r) => { featuresMap[r.key] = parseInt(r.count, 10) || 0; });
+      }
+      for (const { key, tags } of customFilters.filter((f) => !savedTags.has(f.key))) {
         const customAgg = await client.query(
           `SELECT ${customCountExpr} AS count
              FROM temp_docs t
@@ -497,6 +560,7 @@ export default async function handler(req, res) {
         totalDocs,
         totalEditions,
         langs: langsMap,
+        langsUnassigned,
         years: yearsMap,
         cities: citiesMap,
         features: featuresMap,

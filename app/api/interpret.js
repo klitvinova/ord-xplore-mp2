@@ -14,10 +14,24 @@ function getOpenAI() {
 // CaISI (metadata-curation-framework) is optional. It is only called when
 // CAISI_URL is set; server.js sets it to http://localhost:8001 for local runs.
 // Read lazily because server.js assigns env vars after this module loads.
-// The topic facet is hidden until the topic model is rebuilt (FIX_PLAN.md, T1).
-const TOPICS_ENABLED = process.env.TOPICS_ENABLED === 'true';
 const getCaisiUrl = () => (process.env.CAISI_URL || '').replace(/\/$/, '') || null;
 const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+
+/**
+ * Topics the LLM may use: only from a v2 build (topics.lang exists), whose models passed the
+ * evaluation in data/build/ordx/topics.py. Older databases: none (near-uniform model, FIX_PLAN T1).
+ */
+async function getTopics() {
+  try {
+    const { rows } = await getPool().query(
+      `SELECT id, words, lang FROM topics
+        WHERE EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'topics' AND column_name = 'lang')
+        ORDER BY lang, id`);
+    return rows;
+  } catch (err) {
+    return [];   // older database: the column check fails inside the query planner, or no table
+  }
+}
 
 /**
  * Fetch active property catalog from the database to inject into the LLM system prompt.
@@ -86,7 +100,7 @@ async function getTeiTagDefinitions() {
 /**
  * Build MCF/CaISI workflow prompt using active dynamic property schema and TEI guidelines.
  */
-function buildCaisiSystemPrompt(properties, teiTags = []) {
+function buildCaisiSystemPrompt(properties, teiTags = [], topics = []) {
   const binaryProps = properties.filter(p => p.type === 'binary').map(p => p.name);
   const choiceProps = properties.filter(p => p.type === 'multiple_choice').map(p => {
     const opts = Array.isArray(p.options) && p.options.length > 0 ? ` (options: ${p.options.slice(0, 8).join(', ')})` : '';
@@ -105,36 +119,11 @@ function buildCaisiSystemPrompt(properties, teiTags = []) {
     return `   [${cat}]:\n     - ` + list.join('\n     - ');
   }).join('\n\n');
 
-  const topicsList = `
-   - T0: German Administrative
-   - T1: Board Meetings & Reports
-   - T2: Business & Company Correspondence
-   - T4: Middle High German Texts
-   - T10: Latin Chronicles & Inscriptions
-   - T12: English Economic Policy
-   - T13: Expedition Travel Journals
-   - T14: Education & Science
-   - T15: Parliamentary Debates
-   - T16: English Formal Letters
-   - T17: Insurance & Associations
-   - T23: German Colonial & Foreign Affairs
-   - T24: Art & Illustration
-   - T25: Latin Roman Monuments
-   - T28: Archaeology & Figures
-   - T29: Botany & Flora
-   - T31: Political Negotiations
-   - T32: Scientific Theory & Discussion
-   - T33: Spatial Planning Commission
-   - T34: Swiss Historical Records
-   - T37: Wilderness & Camping
-   - T38: US Foreign Policy & Military
-   - T42: Church Community Requests
-   - T43: French Botanical Gardens
-   - T44: French Personal Correspondence`;
+  const topicsList = topics.map(t => `\n   - ${t.id}: ${(t.words || []).slice(0, 6).join(', ')} [${t.lang}]`).join('');
 
   return `You are the CaISI (Metadata Curation Framework) Intent Elicitation and Query Resolution Engine for ORD Xplore.
 
-Your task is to analyze user queries over historical digital editions and metadata using high-level facets, 50 Topic clusters, and raw TEI XML elements.
+Your task is to analyze user queries over historical digital editions and metadata using high-level facets, topic clusters, and raw TEI XML elements.
 Perform three distinct steps:
 
 1. QUERY SCOPE CLASSIFICATION:
@@ -147,14 +136,17 @@ Perform three distinct steps:
 
 3. FACET, PROPERTY, TOPIC & RAW TEI TAG MAPPING:
    - Standard facets:
-     * "time": year(s) or year ranges (e.g. [1750, 1800] or [1750]). For historical eras: "Second World War" -> [1939, 1945], "First World War" -> [1914, 1918], "18th century" -> [1700, 1799], "19th century" -> [1800, 1899], "Renaissance" -> [1400, 1650], "Middle Ages" -> [500, 1500].
+     * "time": year(s) or year ranges (e.g. [1750, 1800] or [1750]). For historical eras: "Second World War" -> [1939, 1945], "First World War" -> [1914, 1918], "18th century" -> [1700, 1799], "19th century" -> [1800, 1899], "Renaissance" -> [1400, 1650], "Middle Ages" -> [500, 1500]. Add a "source" for the date layer:
+         - "creation": when the document was written or made ("letters from 1850", "written in 1850") -- the default
+         - "publication": when it was historically printed or published ("published in 1850", "printed before 1600")
+         - "contextual": years the text is about or mentions ("documents about 1848", "mentioning 1789")
      * "geography": city name or country (e.g. "Zurich", "Switzerland", "France", "Germany", "London", "Paris", "Berlin", "Vienna"), plus a "source" saying which place layer is meant:
          - "creation": where the document was written or sent from ("letters from France", "written in Paris", "sent from Vienna")
          - "publication": where it was printed or published ("published in London", "printed in Leipzig")
          - "contextual": places the text is about or mentions ("letters about France", "mentioning Zurich", "documents on Egypt")
          If the query does not make it clear, use "contextual".
      * "language": ISO code or language name ("fr", "en", "de", "la", "it", "es")
-${TOPICS_ENABLED ? `     * "topicId": one of the 50 topic cluster IDs if query matches a domain topic: ${topicsList}` : '     * (topics are disabled: never output a topicId)'}
+${topics.length ? `     * "topicId": one of these topic IDs (each topic model covers one language; the words are the topic's top words) if the query clearly asks for that subject: ${topicsList}` : '     * (topics are disabled: never output a topicId)'}
    - Dynamic binary properties: ${binaryProps.join(', ')}
    - Categorical / choice properties: ${choiceProps.join(', ')}
    - Complete TEI XML Guidelines Elements (TEI P5):
@@ -206,7 +198,7 @@ OUTPUT FORMAT (JSON only, no markdown):
       }
     ],
     "facets": {
-      "time": [{ "op": "include" | "range", "values": ["1750", "1800"] }],
+      "time": [{ "op": "include" | "range", "values": ["1750", "1800"], "source": "creation" | "publication" | "contextual" }],
       "geography": [{ "op": "include", "values": ["Zurich"], "source": "creation" | "publication" | "contextual" }],
       "language": [{ "op": "include", "values": ["fr"] }],
       "topicId": "T29",
@@ -630,6 +622,15 @@ const GEO_SOURCES = ['creation', 'publication', 'contextual'];
  * its map layer to what the query meant ("from France" -> creation).
  */
 function normalizeGeoSource(data) {
+  // Time: which date layer is meant. "Letters from 1850" means written in 1850, so the
+  // default is the creation date, not a year mentioned in the text.
+  const time = data?.facets?.time?.[0];
+  if (time) {
+    if (!GEO_SOURCES.includes(time.source)) time.source = 'creation';
+    for (const it of data.intents || []) {
+      if (it && it.facet === 'time') it.filter = { ...(it.filter || {}), values: it.filter?.values || time.values, source: time.source };
+    }
+  }
   const geo = data?.facets?.geography?.[0];
   if (!geo) return data;
   if (!GEO_SOURCES.includes(geo.source)) geo.source = 'contextual';
@@ -655,6 +656,12 @@ export default async function handler(req, res) {
   }
 
   const trimmedQuery = query.trim();
+  // Engines tried before the one that answered, with the reason they did not (shown in the UI).
+  const attempts = [];
+  const respond = (data, status = 200) => {
+    if (data && typeof data === 'object') { data.attempts = attempts; normalizeGeoSource(data); }
+    return res.status(status).json({ data });
+  };
 
   // 1. CaISI service, only if configured. Any failure falls through to Gemini.
   const CAISI_URL = getCaisiUrl();
@@ -669,11 +676,13 @@ export default async function handler(req, res) {
       if (caisiRes.ok) {
         const caisiData = await caisiRes.json();
         if (caisiData && typeof caisiData === 'object') { caisiData.engine = 'caisi'; normalizeGeoSource(caisiData); }
-        return res.status(200).json({ data: caisiData });
+        return respond(caisiData);
       }
       console.warn(`CaISI returned HTTP ${caisiRes.status}, falling back`);
+      attempts.push({ engine: 'caisi', ok: false, reason: `HTTP ${caisiRes.status}` });
     } catch (e) {
       console.warn('CaISI unreachable, falling back:', e.message);
+      attempts.push({ engine: 'caisi', ok: false, reason: e.name === 'TimeoutError' ? 'timed out' : 'unreachable' });
     }
   }
 
@@ -683,7 +692,7 @@ export default async function handler(req, res) {
     const dynamicProperties = await getDynamicProperties();
     const result = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
     result.engine = 'heuristic';
-    return res.status(200).json({ data: result });
+    return respond(result);
   }
 
   // Google Gemini LLM Intent Engine
@@ -692,7 +701,7 @@ export default async function handler(req, res) {
     try {
       const dynamicProperties = await getDynamicProperties();
       const teiTags = await getTeiTagDefinitions();
-      const systemPrompt = buildCaisiSystemPrompt(dynamicProperties, teiTags);
+      const systemPrompt = buildCaisiSystemPrompt(dynamicProperties, teiTags, await getTopics());
 
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL()}:generateContent?key=${GEMINI_API_KEY}`;
       const geminiRes = await fetch(geminiUrl, {
@@ -775,14 +784,16 @@ export default async function handler(req, res) {
 
             data.engine = 'gemini';
             normalizeGeoSource(data);
-            return res.status(200).json({ data });
+            return respond(data);
           }
         }
       } else {
         console.warn(`Gemini returned HTTP ${geminiRes.status}, falling back`);
+        attempts.push({ engine: 'gemini', ok: false, reason: `HTTP ${geminiRes.status}` });
       }
     } catch (gErr) {
       console.warn('Gemini LLM call failed, falling back:', gErr.message);
+      attempts.push({ engine: 'gemini', ok: false, reason: 'request failed' });
     }
   }
 
@@ -793,10 +804,10 @@ export default async function handler(req, res) {
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('dummy')) {
       const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
       fallbackResult.engine = 'heuristic';
-      return res.status(200).json({ data: fallbackResult });
+      return respond(fallbackResult);
     }
 
-    const systemPrompt = buildCaisiSystemPrompt(dynamicProperties);
+    const systemPrompt = buildCaisiSystemPrompt(dynamicProperties, [], await getTopics());
 
     const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
@@ -813,7 +824,7 @@ export default async function handler(req, res) {
     if (!result || !result.data) {
       const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
       fallbackResult.engine = 'heuristic';
-      return res.status(200).json({ data: fallbackResult });
+      return respond(fallbackResult);
     }
 
     // Normalization & Backward Compatibility for ORD Xplore
@@ -831,12 +842,14 @@ export default async function handler(req, res) {
 
     data.engine = 'openai';
     normalizeGeoSource(data);
+    data.attempts = attempts;
     res.status(200).json(result);
   } catch (error) {
     console.warn('LLM call failed, using heuristic intent resolver:', error.message);
     const dynamicProperties = await getDynamicProperties();
     const fallbackResult = resolveHeuristicIntent(trimmedQuery, dynamicProperties);
     fallbackResult.engine = 'heuristic';
-    res.status(200).json({ data: fallbackResult });
+    attempts.push({ engine: 'openai', ok: false, reason: 'request failed' });
+    respond(fallbackResult);
   }
 }

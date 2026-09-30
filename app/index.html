@@ -150,6 +150,9 @@
         </div>
     </header>
 
+    <!-- Search interpretation + active filters: one place for everything that narrows the view -->
+    <div id="filterBar" class="hidden bg-white border-b border-gray-200 px-4 py-1.5 text-xs shrink-0 relative z-[999]"></div>
+
     <!-- Search Message Banner (outside header to avoid stacking context issues) -->
     <div id="searchMessage" class="fixed top-16 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-[9998] hidden">
         <div class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900 shadow-lg text-center">
@@ -203,6 +206,7 @@
                     </a>
                 </div>
                 <div id="langChart" class="chart-container h-56"></div>
+                <p id="langNote" class="hidden text-[11px] text-gray-500 mt-1"></p>
             </div>
 
 
@@ -265,8 +269,8 @@
                             class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
                         <button id="btn-geo-pub" onclick="setGeoSource('publication')"
                             class="flex-1 px-2 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
-                        <button id="btn-geo-con" onclick="setGeoSource('contextual')"
-                            class="flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                        <button id="btn-geo-con" onclick="setGeoSource('contextual')" title="Places mentioned in the text, not where it was written"
+                            class="flex-1 px-2 py-1 rounded shadow bg-white text-gray-800 transition-all">Mentioned</button>
                     </div>
                     <div class="flex items-center gap-2 mb-1"><span
                             class="w-3 h-3 bg-[#0369a1] opacity-80 block"></span> <span id="legend-label">Doc
@@ -295,8 +299,8 @@
                                     class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Creation</button>
                                 <button id="btn-date-pub" onclick="setDateSource('publication')"
                                     class="px-3 py-1 transition-all text-gray-500 hover:text-gray-700">Publication</button>
-                                <button id="btn-date-con" onclick="setDateSource('contextual')"
-                                    class="px-3 py-1 rounded shadow bg-white text-gray-800 transition-all">Content</button>
+                                <button id="btn-date-con" onclick="setDateSource('contextual')" title="Years mentioned in the text (most frequent year per document), not creation years"
+                                    class="px-3 py-1 rounded shadow bg-white text-gray-800 transition-all">Mentioned</button>
                             </div>
                             <a href="transparency.html" target="_blank" class="text-gray-400 hover:text-blue-600"
                                 title="Methodology">
@@ -318,12 +322,33 @@
     </div>
 
     <!-- Dynamic Filter Modal -->
+    <div id="saveTagModal" class="hidden fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center" onclick="closeSaveSearchTag()">
+        <div class="bg-white rounded-lg shadow-xl w-[26rem] flex flex-col p-4 text-sm" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center border-b pb-2 mb-3">
+                <h3 class="font-bold text-gray-700">Save search as a tag</h3>
+                <button onclick="closeSaveSearchTag()" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <label class="text-xs font-medium text-gray-500 mb-1">Tag name</label>
+            <input type="text" id="saveTagName" class="w-full border rounded px-3 py-1.5 mb-3 focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <div class="text-xs text-gray-500 mb-1">Documents that contain</div>
+            <div id="saveTagWhat" class="text-xs font-mono text-gray-800 bg-gray-50 border rounded px-2 py-1.5 mb-2"></div>
+            <label id="saveTagAuthorsRow" class="flex items-center gap-2 text-xs text-gray-700 mb-2">
+                <input type="checkbox" id="saveTagAuthors" class="accent-gray-600"> also documents written or signed by them (&lt;author&gt;, &lt;signed&gt;)
+            </label>
+            <p class="text-[11px] text-gray-400 mb-3">Only names the editors tagged are found, not untagged mentions in the running text. The tag is saved in the database and shown to everyone using it.</p>
+            <div class="flex justify-end gap-2 pt-2 border-t">
+                <button onclick="closeSaveSearchTag()" class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">Cancel</button>
+                <button onclick="confirmSaveSearchTag()" class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Save tag</button>
+            </div>
+        </div>
+    </div>
+
     <div id="filterModal" class="hidden fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center"
         onclick="closeAddFilterModal()">
         <div class="bg-white rounded-lg shadow-xl w-[26rem] max-h-[80vh] flex flex-col p-4"
             onclick="event.stopPropagation()">
             <div class="flex justify-between items-center border-b pb-2 mb-3">
-                <h3 class="font-bold text-gray-700">Add Custom Tag Filter</h3>
+                <h3 class="font-bold text-gray-700">Add a custom tag</h3>
                 <button onclick="closeAddFilterModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <!-- Custom filter name -->
@@ -336,12 +361,17 @@
                 class="w-full border rounded px-3 py-1.5 mb-2 text-sm" onkeyup="renderTagList()">
             <!-- Tag list (checkboxes) -->
             <div id="tagList" class="flex-1 overflow-y-auto space-y-0.5 text-sm mb-3"></div>
+            <!-- Optional: only where the element's text contains ... -->
+            <label class="text-xs font-medium text-gray-500 mb-1">…whose text contains (optional)</label>
+            <input type="text" id="filterValue" placeholder="e.g. Van Gogh (leave empty: the element just has to be present)"
+                class="w-full border rounded px-3 py-1.5 mb-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+            <p class="text-[11px] text-gray-400 mb-3">Matched in the text of the tagged elements (case-insensitive), not in the running text. The tag is saved and shown to everyone using this database.</p>
             <!-- Footer -->
             <div class="flex justify-end gap-2 pt-2 border-t">
                 <button onclick="closeAddFilterModal()"
                     class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">Cancel</button>
                 <button onclick="confirmAddFilter()"
-                    class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Add Filter</button>
+                    class="text-xs px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800">Save tag</button>
             </div>
         </div>
     </div>
@@ -356,6 +386,7 @@
             document.getElementById('filterModal').classList.remove('hidden');
             document.getElementById('filterCustomName').value = '';
             document.getElementById('tagSearch').value = '';
+            document.getElementById('filterValue').value = '';
             SELECTED_TAGS.clear();
             renderTagList();
         }
@@ -363,30 +394,122 @@
             document.getElementById('filterModal').classList.add('hidden');
         }
 
-        function confirmAddFilter() {
+        async function confirmAddFilter() {
             const tags = [...SELECTED_TAGS];
             if (tags.length === 0) return;
+            const value = (document.getElementById('filterValue').value || '').trim();
 
             // Determine filter display name
             let name = (document.getElementById('filterCustomName').value || '').trim();
-            if (!name) name = tags.length === 1 ? tags[0] : tags.join(' + ');
+            if (!name) name = value ? `${tags.join(' / ')} contains “${value}”` : (tags.length === 1 ? tags[0] : tags.join(' + '));
 
-            const key = CUSTOM_PREFIX + name;
-
-            // Skip if already present
-            if (DYNAMIC_FEATURES.has(key)) { closeAddFilterModal(); return; }
-            DYNAMIC_FEATURES.add(key);
-
-            // The tag list travels to the API on every request; the server does
-            // the matching, so there is nothing to compute client-side.
-            DYNAMIC_FILTER_META[key] = { label: name, tags };
-
+            const definition = value ? { tags: [], values: [{ tags, value }] } : { tags, values: [] };
             closeAddFilterModal();
+            await saveCustomTag(name, definition, null);
+        }
+
+        // --- Saved custom tags (api/custom_tags.js) ---------------------------------------
+        // A saved tag is a characteristic like the built-in ones: stored in the database with the
+        // documents it matches, listed under Characteristics, usable as a Y/N filter.
+        async function loadSavedTags() {
+            try {
+                const res = await fetch('/api/custom_tags');
+                const data = await res.json();
+                (data.tags || []).forEach(t => {
+                    DYNAMIC_FEATURES.add(t.key);
+                    DYNAMIC_FILTER_META[t.key] = { label: t.label, tags: t.definition.tags || [], values: t.definition.values || [],
+                                                   saved: true, sourceQuery: t.source_query };
+                });
+            } catch (e) { console.warn('Saved tags unavailable:', e.message); }
+        }
+
+        async function saveCustomTag(label, definition, sourceQuery) {
+            try {
+                const res = await fetch('/api/custom_tags', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create', label, definition, sourceQuery })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Saving failed');
+                DYNAMIC_FEATURES.add(data.key);
+                DYNAMIC_FILTER_META[data.key] = { label: data.label, tags: data.definition.tags, values: data.definition.values,
+                                                  saved: true, sourceQuery };
+                notify(`Saved “${data.label}”: ${data.doc_count.toLocaleString()} documents. It is listed under Characteristics.`);
+            } catch (err) {
+                // No write access to the database: keep it for this session only (structural tags only).
+                if (!definition.values.length) {
+                    const key = CUSTOM_PREFIX + label;
+                    DYNAMIC_FEATURES.add(key);
+                    DYNAMIC_FILTER_META[key] = { label, tags: definition.tags };
+                    notify(`Could not save the tag (${err.message}); it is kept for this session only.`, true);
+                } else {
+                    notify(`Could not save the tag: ${err.message}`, true);
+                }
+            }
             updateDashboard();
         }
 
-        function removeDynamicFeature(key) {
+        function notify(msg, isError = false) {
+            let el = document.getElementById('appToast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'appToast';
+                el.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2 rounded shadow-lg text-sm';
+                document.body.appendChild(el);
+            }
+            el.className = `fixed bottom-4 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2 rounded shadow-lg text-sm ${isError ? 'bg-rose-600 text-white' : 'bg-gray-800 text-white'}`;
+            el.textContent = msg;
+            el.style.display = 'block';
+            clearTimeout(el._t);
+            el._t = setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        // "Save as tag" from a search such as "documents mentioning Van Gogh": the search's element
+        // values become a saved tag. Persons are looked up in persName, rs and name (the Van Gogh
+        // letters tag people as <rs type="pers">); author/signed only if asked for.
+        const VALUE_ELEMENTS = {
+            persName: ['persName', 'rs', 'name'], placeName: ['placeName', 'rs', 'name'],
+            orgName: ['orgName', 'rs', 'name'], term: ['term', 'gloss', 'rs', 'name'], title: ['title', 'head', 'bibl'],
+        };
+        function searchTagValues() {
+            return (FILTERS.tagValues || []).filter(tv => tv && tv.value && tv.value !== 'true' && tv.value !== true);
+        }
+        function openSaveSearchTag() {
+            const tvs = searchTagValues();
+            if (!tvs.length) return;
+            const values = [...new Set(tvs.map(tv => String(tv.value)))];
+            const isPerson = tvs.some(tv => tv.tag === 'persName');
+            document.getElementById('saveTagName').value = `Mentions ${values.join(' / ')}`;
+            document.getElementById('saveTagWhat').textContent = tvs.map(tv =>
+                `“${tv.value}” in ${(VALUE_ELEMENTS[tv.tag] || [tv.tag]).map(t => '<' + t + '>').join(', ')}`).join('; ');
+            document.getElementById('saveTagAuthorsRow').classList.toggle('hidden', !isPerson);
+            document.getElementById('saveTagAuthors').checked = false;
+            document.getElementById('saveTagModal').classList.remove('hidden');
+        }
+        function closeSaveSearchTag() { document.getElementById('saveTagModal').classList.add('hidden'); }
+        async function confirmSaveSearchTag() {
+            const label = document.getElementById('saveTagName').value.trim();
+            if (!label) return;
+            const withAuthors = document.getElementById('saveTagAuthors').checked;
+            const values = searchTagValues().map(tv => ({
+                tags: [...(VALUE_ELEMENTS[tv.tag] || [tv.tag]), ...(withAuthors && tv.tag === 'persName' ? ['author', 'signed'] : [])],
+                value: String(tv.value),
+            }));
+            closeSaveSearchTag();
+            await saveCustomTag(label, { tags: [], values }, LAST_SEARCH ? LAST_SEARCH.query : null);
+        }
+
+        async function removeDynamicFeature(key) {
             if (!DYNAMIC_FEATURES.has(key)) return;
+            const meta = DYNAMIC_FILTER_META[key] || {};
+            if (meta.saved) {
+                if (!window.confirm(`Delete the saved tag “${meta.label}”? It is removed for everyone using this database.`)) return;
+                try {
+                    const res = await fetch('/api/custom_tags', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                  body: JSON.stringify({ action: 'delete', key }) });
+                    if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+                } catch (err) { notify(`Could not delete the tag: ${err.message}`, true); return; }
+            }
             DYNAMIC_FEATURES.delete(key);
             delete DYNAMIC_FILTER_META[key];
 
@@ -464,6 +587,7 @@
             lang: null,
             country: null,
             city: null,
+            place: null,
             yearRange: null,
             feature: null,              // { key, value } - built-in attribute or __custom__ tag filter
             topicId: null,
@@ -506,20 +630,25 @@
                 return null;
             }),
             fetch(`/api/info?v=${t}`).then(r => r.ok ? r.json() : null).catch(() => null)
-        ]).then(([dbMeta, topicRes, serverInfo]) => {
+        ]).then(async ([dbMeta, topicRes, serverInfo]) => {
             // Missing migrations are logged for developers; /api/info has details.
             const missingTables = serverInfo?.database?.missingTables || [];
             if (missingTables.length) {
                 console.warn('Database is missing tables (some filters are skipped):', missingTables.map(m => m.table).join(', '));
             }
 
-            TOPIC_HIERARCHY = (Array.isArray(topicRes) && topicRes.length > 0) ? topicRes : (dbMeta.topics || []);
-            ALL_FEATURES = dbMeta.features || [];
             // Language names from the database (after patch_database.py), for codes
             // the built-in LANGUAGE_NAMES map doesn't know (e.g. 'und').
             (dbMeta.languages || []).forEach(l => {
                 if (l.iso_code && l.name && l.name !== l.iso_code) DB_LANGUAGE_NAMES[l.iso_code] = l.name;
             });
+            // Topics are shown only from a v2 build, whose models passed the quality gates; the static
+            // topics_hierarchy.json (old near-uniform model) is used for nothing else any more.
+            SHOW_TOPICS = dbMeta.topicsEvaluated === true;
+            TOPIC_HIERARCHY = SHOW_TOPICS
+                ? dbMeta.topics.map(t => ({ ...t, name: `${t.name} (${languageLabel(t.lang)})` }))
+                : [];
+            ALL_FEATURES = dbMeta.features || [];
 
             // Set up editions metadata
             EDITION_METADATA = {};
@@ -528,11 +657,15 @@
             });
 
             initMap();
+            await loadSavedTags();
             if (SHOW_TOPICS) {
                 document.getElementById('topicsPanel').classList.replace('hidden', 'flex');
                 renderTopicHierarchy(TOPIC_HIERARCHY);
             }
             updateDashboard();
+            // /?doc=<id> opens a document directly (links from the curation page)
+            const deepDoc = new URLSearchParams(window.location.search).get('doc');
+            if (deepDoc && /^\d+$/.test(deepDoc)) openDocumentReader(parseInt(deepDoc, 10));
         }).catch(err => {
             console.error("Error loading data:", err);
             document.body.innerHTML = `<div class="p-10 text-red-600">Error loading data from SQL database.<br>${err}</div>`;
@@ -564,6 +697,17 @@
             if (e) e.stopPropagation();
             FILTERS.yearRange = null;
             updateDashboard();
+        }
+
+        // Switch the timeline's date layer without clearing the range or reloading (used by search).
+        function selectDateSource(source) {
+            if (!['creation', 'publication', 'contextual'].includes(source)) return;
+            FILTERS.dateSource = source;
+            ['cre', 'pub', 'con'].forEach(k => {
+                document.getElementById(`btn-date-${k}`).className = source.startsWith(k.slice(0, 3))
+                    ? "px-3 py-1 rounded shadow bg-white text-gray-800 transition-all"
+                    : "px-3 py-1 transition-all text-gray-500 hover:text-gray-700";
+            });
         }
 
         function setDateSource(source) {
@@ -615,7 +759,11 @@
                 }
 
                 renderStatsLine(data.totalDocs, data.totalEditions);
+                LAST_TOTAL = (VIEW_MODE === 'document') ? data.totalDocs : data.totalEditions;
+                renderFilterBar();
                 renderLangChart(data.langs);
+                renderLangNote(data.langsUnassigned);
+                LAST_CITIES = data.cities || {};
                 renderCityList(data.cities);
 
                 const totalCount = (VIEW_MODE === 'document') ? data.totalDocs : data.totalEditions;
@@ -698,6 +846,8 @@
 
         function resetFilters() {
             document.getElementById('searchInput').value = "";
+            LAST_SEARCH = null;
+            CURRENT_SEARCH_INTENTS = [];
             document.getElementById('searchStatus').classList.add('hidden');
             document.getElementById('searchMessage').classList.add('hidden');
             EXTRACTED_FACETS = [];
@@ -705,6 +855,7 @@
                 lang: null,
                 country: null,
                 city: null,
+                place: null,
                 yearRange: null,
                 feature: null,
                 properties: [],
@@ -781,9 +932,13 @@
             document.getElementById('clearSearch').classList.add('hidden');
             document.getElementById('searchMessage').classList.add('hidden');
             document.getElementById('searchStatus').classList.add('hidden');
+            LAST_SEARCH = null;
+            CURRENT_SEARCH_INTENTS = [];
             if (SEARCH_APPLIED) {
                 SEARCH_APPLIED = false;
                 resetFilters();
+            } else {
+                renderFilterBar();
             }
             input.focus();
         }
@@ -819,68 +974,172 @@
                 const facets = data.facets || {};
                 const msg = data.message || scope.message || "Query processed.";
 
-                // Handle Scope Decisions
-                if (scope.decision === 'unsupported') {
-                    statusEl.innerHTML = `
-                        <div class="space-y-1 py-0.5">
-                            <div class="font-semibold text-amber-700 flex items-center gap-1">
-                                <span>⚠️ Query Outside Exploration Scope</span>
-                            </div>
-                            <div class="text-gray-700">${escapeHtml(scope.reason || 'This query cannot be answered via metadata filters.')}</div>
-                            <div class="text-xs text-gray-500 italic mt-0.5">${escapeHtml(scope.message || 'Tip: Try searching for digital edition characteristics, dates, places, or languages.')}</div>
-                        </div>
-                    `;
-                    statusEl.classList.remove('hidden');
+                LAST_SEARCH = { query, engine: data.engine, attempts: data.attempts || [], message: msg,
+                                decision: scope.decision || 'supported', reason: scope.reason || '', hint: scope.message || '' };
+                statusEl.classList.add('hidden');
+                if (scope.decision === 'unsupported' || scope.decision === 'unclear') {
+                    CURRENT_SEARCH_INTENTS = [];
+                    renderFilterBar();
                     return;
                 }
-
-                if (scope.decision === 'unclear') {
-                    statusEl.innerHTML = `
-                        <div class="space-y-1 py-0.5">
-                            <div class="font-semibold text-blue-700 flex items-center gap-1">
-                                <span>ℹ️ Please clarify query</span>
-                            </div>
-                            <div class="text-gray-700">${escapeHtml(scope.reason || 'The query is too broad or ambiguous.')}</div>
-                            <div class="text-xs text-gray-500 italic mt-0.5">${escapeHtml(scope.message || 'Tip: Add specific attributes like time ranges, languages, or features.')}</div>
-                        </div>
-                    `;
-                    statusEl.classList.remove('hidden');
-                    return;
-                }
-
-                // Supported query: Apply facets and display decomposed intents
+                // Supported query: apply the facets; the bar shows each intent as a pill
                 CURRENT_SEARCH_INTENTS = (intents || [])
                     .filter(it => SHOW_TOPICS || !isTopicIntent(it))
                     .map(it => ({ ...it, active: true }));
+                if (!CURRENT_SEARCH_INTENTS.length) LAST_SEARCH.decision = 'nothing';
                 applyBackendFacets(facets, intents);
-
-                statusEl.innerHTML = `
-                    <div class="space-y-1 py-0.5">
-                        <div class="font-semibold text-emerald-700 flex items-center justify-between text-xs">
-                            <span class="flex items-center gap-1">✨ Intent match <span class="font-normal text-gray-500">· ${escapeHtml(ENGINE_LABELS[data.engine] || data.engine || 'unknown engine')}</span></span>
-                            <span class="text-[10px] text-gray-500 font-normal italic">(click any pill to toggle on/off)</span>
-                        </div>
-                        <div class="text-gray-800">${escapeHtml(msg)}</div>
-                        <div id="searchIntentPills" class="flex flex-wrap gap-1.5 mt-1.5"></div>
-                    </div>
-                `;
-                renderInteractiveIntentPills();
-                statusEl.classList.remove('hidden');
-
             } catch (err) {
                 console.error("Search error:", err);
-                statusEl.innerHTML = `<span class="text-rose-600 font-medium">Error searching. Check console or backend logs.</span>`;
-                statusEl.classList.remove('hidden');
+                statusEl.classList.add('hidden');
+                LAST_SEARCH = { query, decision: 'error', reason: err.message || 'The search service did not answer.' };
+                renderFilterBar();
             }
         }
 
         let CURRENT_SEARCH_INTENTS = [];
+        let LAST_SEARCH = null;     // { query, engine, attempts, message, decision, reason, hint }
+        let LAST_TOTAL = null;
+        const EXAMPLE_QUERIES = ['Letters from 1850 in French', 'Latin inscriptions from the 2nd century', 'Diaries written in German'];
+        const DATE_SOURCE_NAMES = { creation: 'written or made', publication: 'published', contextual: 'mentioned in the text' };
 
-        // Topic assignments are near-uniform in the current data (see
-        // data/geo_audit/FIX_PLAN.md, T1): the facet stays hidden until the
-        // topic model is rebuilt.
-        const SHOW_TOPICS = false;
-        const isTopicIntent = it => it && (it.facet === 'topic' || /^T\d+$/.test(it.facet || '') ||
+        function featureLabel(key) {
+            if (FEATURE_LABELS[key]) return FEATURE_LABELS[key];
+            if (DYNAMIC_FILTER_META[key]?.label) return DYNAMIC_FILTER_META[key].label;
+            return String(key || '').replace(/^(is|contains)_/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+        }
+        function languageLabel(code) {
+            return (typeof LANGUAGE_NAMES !== 'undefined' && LANGUAGE_NAMES[code]) || DB_LANGUAGE_NAMES[code] || code;
+        }
+
+        // Filters currently narrowing the view, whatever set them (search, clicks, tag modal)
+        function activeFilterPills() {
+            const pills = [];
+            if (FILTERS.lang) pills.push({ kind: 'lang', label: `Language: ${languageLabel(FILTERS.lang)}` });
+            if (FILTERS.country) pills.push({ kind: 'country', label: `Place: ${FILTERS.country} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.city) pills.push({ kind: 'city', label: `Place: ${FILTERS.city} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.place) pills.push({ kind: 'place', label: `Place: ${FILTERS.place.key} · ${GEO_SOURCE_LABELS[FILTERS.geoSource] || ''}` });
+            if (FILTERS.yearRange) {
+                const [a, b] = FILTERS.yearRange;
+                pills.push({ kind: 'yearRange', label: `${a === b ? formatYear(a) : formatYear(a) + '–' + formatYear(b)} · ${DATE_SOURCE_NAMES[FILTERS.dateSource] || ''}` });
+            }
+            if (FILTERS.feature) pills.push({ kind: 'feature', label: featureLabel(FILTERS.feature.key) });
+            (FILTERS.tagValues || []).forEach((tv, i) => pills.push({ kind: 'tagValue', idx: i, label: `<${tv.tag}>${tv.value ? ' = ' + tv.value : ''}` }));
+            (FILTERS.properties || []).forEach((p, i) => {
+                if (FILTERS.feature && (p.name === FILTERS.feature.key || BINARY_FACET_MAPPING[p.name] === FILTERS.feature.key)) return;
+                pills.push({ kind: 'property', idx: i, label: `${featureLabel(p.name)}: ${p.value}` });
+            });
+            if (FILTERS.topicId && SHOW_TOPICS) pills.push({ kind: 'topic', label: `Topic: ${(TOPIC_HIERARCHY.find(t => t.id === FILTERS.topicId) || {}).name || FILTERS.topicId}` });
+            return pills;
+        }
+
+        const INTENT_FOR = { lang: ['language'], country: ['geography'], city: ['geography'], yearRange: ['time'] };
+        function removeFilter(kind, idx, key) {
+            // A filter that came from the search: switch its intent off so the pill above shows it as off
+            const facets = INTENT_FOR[kind];
+            const fromIntent = CURRENT_SEARCH_INTENTS.filter(it => it.active !== false && (
+                (facets && facets.includes(it.facet)) ||
+                (kind === 'feature' && (BINARY_FACET_MAPPING[it.facet] || /^(is|contains)_/.test(it.facet || ''))) ||
+                (kind === 'tagValue' && /^(tag_|tagValues|persName|signed)/.test(it.facet || ''))));
+            if (fromIntent.length) {
+                fromIntent.forEach(it => { it.active = false; });
+                reapplyActiveIntents();
+                return;
+            }
+            if (kind === 'tagValue') FILTERS.tagValues.splice(idx, 1);
+            else if (kind === 'property') FILTERS.properties.splice(idx, 1);
+            else if (kind === 'custom') { DYNAMIC_FEATURES.delete(key); }
+            else if (kind === 'topic') FILTERS.topicId = null;
+            else {
+                if (kind === 'feature' && FILTERS.feature) {
+                    const k = FILTERS.feature.key;
+                    FILTERS.properties = (FILTERS.properties || []).filter(p => p.name !== k && BINARY_FACET_MAPPING[p.name] !== k);
+                }
+                FILTERS[kind] = null;
+            }
+            updateDashboard();
+        }
+
+        function runExample(q) {
+            const input = document.getElementById('searchInput');
+            input.value = q;
+            document.getElementById('clearSearch').classList.remove('hidden');
+            handleSearch();
+        }
+
+        function engineNote(s) {
+            const name = ENGINE_LABELS[s.engine] || s.engine || 'unknown';
+            const failed = (s.attempts || []).filter(a => !a.ok).map(a => ENGINE_LABELS[a.engine] || a.engine);
+            if (failed.length) {
+                return `<span class="text-amber-700" title="${escapeHtml((s.attempts || []).map(a => `${a.engine}: ${a.reason || 'ok'}`).join('\n'))}">interpreted by ${escapeHtml(name)} (${escapeHtml(failed.join(', '))} unavailable)</span>`;
+            }
+            return `<span class="text-gray-500">interpreted by ${escapeHtml(name)}</span>`;
+        }
+
+        function renderFilterBar() {
+            const bar = document.getElementById('filterBar');
+            if (!bar) return;
+            const filters = activeFilterPills();
+            const s = LAST_SEARCH;
+            if (!s && !filters.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+            const parts = [];
+
+            if (s) {
+                const q = `<span class="font-medium text-gray-800">“${escapeHtml(s.query)}”</span>`;
+                if (s.decision === 'error') {
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap"><span class="text-rose-600">Search failed for ${q}: ${escapeHtml(s.reason)}</span></div>`);
+                } else if (s.decision === 'unsupported' || s.decision === 'unclear' || s.decision === 'nothing') {
+                    const head = s.decision === 'unsupported' ? 'This question cannot be answered with the collection\'s metadata'
+                        : s.decision === 'unclear' ? 'This query is too broad to turn into filters' : 'No filters could be derived from this query';
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap">
+                        <span class="${s.decision === 'unsupported' ? 'text-amber-800' : 'text-sky-800'}">${head}: ${q}.</span>
+                        ${s.reason ? `<span class="text-gray-500">${escapeHtml(s.reason)}</span>` : ''}
+                        <span class="text-gray-500">Try:</span>
+                        ${EXAMPLE_QUERIES.map(e => `<button class="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-50 text-gray-700" onclick="runExample('${escapeHtml(e).replace(/'/g, '&#39;')}')">${escapeHtml(e)}</button>`).join('')}
+                        ${s.engine ? engineNote(s) : ''}
+                    </div>`);
+                } else {
+                    const pills = CURRENT_SEARCH_INTENTS.map((it, idx) => {
+                        const on = it.active !== false;
+                        const cls = on ? 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200'
+                                       : 'bg-white text-gray-400 border-gray-300 line-through hover:bg-gray-50';
+                        const src = it.facet === 'geography' && it.filter?.source ? ` · ${escapeHtml(GEO_SOURCE_LABELS[it.filter.source] || it.filter.source)}`
+                                  : it.facet === 'time' && it.filter?.source ? ` · ${escapeHtml(DATE_SOURCE_NAMES[it.filter.source] || it.filter.source)}` : '';
+                        return `<button type="button" onclick="toggleIntentPill(${idx})" class="inline-flex items-center gap-1 px-2 py-0.5 rounded border ${cls}"
+                                    title="${escapeHtml(it.description || '')}${it.description ? '\n' : ''}${on ? 'Applied: click to switch off' : 'Off: click to apply'}">
+                                    <span class="w-1.5 h-1.5 rounded-full ${on ? 'bg-amber-500' : 'bg-gray-300'}"></span>${escapeHtml(it.statement || it.facet || '')}${src}</button>`;
+                    }).join('');
+                    const canSave = searchTagValues().length > 0;
+                    parts.push(`<div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-gray-500">Search</span>${q}<span class="text-gray-400">→</span>${pills}${engineNote(s)}
+                        ${canSave ? `<button class="px-2 py-0.5 rounded border border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100" onclick="openSaveSearchTag()"
+                            title="Keep this as a characteristic (a tag) with its own Y/N counts">+ Save as tag</button>` : ''}
+                    </div>`);
+                }
+            }
+
+            const zero = LAST_TOTAL === 0 && filters.length > 0;
+            if (filters.length) {
+                parts.push(`<div class="flex items-center gap-2 flex-wrap mt-1">
+                    <span class="text-gray-500">Filters</span>
+                    ${filters.map(f => `<span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded border border-gray-300 bg-gray-50 text-gray-700">${escapeHtml(f.label)}
+                        <button class="text-gray-400 hover:text-rose-600 px-0.5" title="Remove this filter" onclick="removeFilter('${f.kind}', ${f.idx ?? -1}, '${escapeHtml(f.key || '')}')">×</button></span>`).join('')}
+                    ${zero ? '<span class="text-rose-600">No documents match all of these; remove one.</span>'
+                           : (LAST_TOTAL !== null ? `<span class="text-gray-500">${LAST_TOTAL.toLocaleString()} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}</span>` : '')}
+                    <button class="ml-auto text-gray-500 hover:text-gray-800 underline" onclick="resetFilters()">Clear all</button>
+                </div>`);
+            } else if (s) {
+                // no filters: put the clear button at the end of the search row
+                parts[parts.length - 1] = parts[parts.length - 1].replace(/<\/div>\s*$/,
+                    '<button class="ml-auto text-gray-500 hover:text-gray-800 underline" onclick="clearSearch()">Clear</button></div>');
+            }
+            bar.innerHTML = parts.join('');
+            bar.classList.remove('hidden');
+        }
+
+        // Set from /api/dashboard: true only for a v2 database whose topic models passed the evaluation
+        // (the old model's assignments were near-uniform; data/geo_audit/FIX_PLAN.md, T1).
+        let SHOW_TOPICS = false;
+        const isTopicIntent = it => it && (it.facet === 'topic' || /^([a-z]{2,3}-)?T\d+$/.test(it.facet || '') ||
             (it.statement || '').toLowerCase().startsWith('topic:'));
 
         // Years are signed (BC < 0); there is no year 0.
@@ -938,40 +1197,7 @@
             'flags_stamp': 'flags_stamp'
         };
 
-        function renderInteractiveIntentPills() {
-            const container = document.getElementById('searchIntentPills');
-            if (!container) return;
-            if (!CURRENT_SEARCH_INTENTS || CURRENT_SEARCH_INTENTS.length === 0) {
-                container.innerHTML = '';
-                return;
-            }
-
-            container.innerHTML = CURRENT_SEARCH_INTENTS.map((it, idx) => {
-                const active = it.active !== false;
-
-                let styleClass = "";
-                let statusDot = "";
-                if (active) {
-                    // Orange / Amber when filter is ACTIVE (matches active facets & tiles)
-                    styleClass = "bg-amber-100 text-amber-950 border-amber-300 font-semibold shadow-xs hover:bg-amber-200";
-                    statusDot = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>`;
-                } else {
-                    // Blue / Sky when INACTIVE (matches default/unselected state)
-                    styleClass = "bg-sky-50 text-sky-700 border-sky-200 line-through opacity-75 hover:bg-sky-100";
-                    statusDot = `<span class="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5"></span>`;
-                }
-
-                const titleAttr = it.description 
-                    ? `title="${escapeHtml(it.description)} (${active ? 'Active - Click to turn OFF' : 'Inactive - Click to turn ON'})"` 
-                    : `title="${active ? 'Filter is ACTIVE - Click to turn OFF' : 'Filter is INACTIVE - Click to turn ON'}"`;
-
-                return `<button type="button" onclick="toggleIntentPill(${idx})" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${styleClass} border cursor-pointer transition-all select-none" ${titleAttr}>
-                    ${statusDot}
-                    <span>${escapeHtml(it.statement || it.facet || '')}</span>
-                    ${it.facet === 'geography' && it.filter?.source ? `<span class="ml-1 font-normal opacity-75">· ${escapeHtml(GEO_SOURCE_LABELS[it.filter.source] || it.filter.source)}</span>` : ''}
-                </button>`;
-            }).join('');
-        }
+        function renderInteractiveIntentPills() { renderFilterBar(); }
 
         function toggleIntentPill(idx) {
             if (!CURRENT_SEARCH_INTENTS[idx]) return;
@@ -984,6 +1210,7 @@
             // Reset filters
             FILTERS.country = null;
             FILTERS.city = null;
+            FILTERS.place = null;
             FILTERS.lang = null;
             FILTERS.yearRange = null;
             FILTERS.feature = null;
@@ -999,6 +1226,7 @@
                     const yrs = it.filter.values.map(Number).filter(n => !isNaN(n));
                     if (yrs.length === 1) FILTERS.yearRange = [yrs[0], yrs[0]];
                     else if (yrs.length > 1) FILTERS.yearRange = [Math.min(...yrs), Math.max(...yrs)];
+                    if (yrs.length) selectDateSource(it.filter.source || 'creation');
                 }
                 // 2. Geography
                 else if (it.facet === 'geography' && it.filter?.values) {
@@ -1062,6 +1290,7 @@
             // Reset filters logic
             FILTERS.country = null;
             FILTERS.city = null;
+            FILTERS.place = null;
             FILTERS.lang = null;
             FILTERS.yearRange = null;
             FILTERS.feature = null;
@@ -1076,6 +1305,7 @@
                     if (years.length > 0) {
                         if (years.length === 1) FILTERS.yearRange = [years[0], years[0]];
                         else FILTERS.yearRange = [Math.min(...years), Math.max(...years)];
+                        selectDateSource(facets.time[0].source || 'creation');
                     }
                 }
             }
@@ -1227,8 +1457,19 @@
             updateDashboard();
         }
 
+        // A click on a place (map marker or Places list) selects exactly that place; a place typed in the
+        // search stays a text match (FILTERS.city). After the update the map zooms to it.
+        let LAST_CITIES = {};
+        let ZOOM_TO_MATCH = false;
         function toggleCity(cityName) {
-            FILTERS.city = FILTERS.city === cityName ? null : cityName;
+            const st = LAST_CITIES[cityName];
+            if (FILTERS.place && FILTERS.place.key === cityName) {
+                FILTERS.place = null;
+            } else {
+                FILTERS.place = { key: cityName, name: (st && st.name) || cityName, country: (st && st.country) || '' };
+                FILTERS.city = null;
+                ZOOM_TO_MATCH = true;
+            }
             updateDashboard();
         }
 
@@ -1248,8 +1489,8 @@
 
         // Explicit label overrides for keys whose auto-generated labels are unclear
         const FEATURE_LABELS = {
-            'is_manuscript': 'Medieval Manuscript',
-            'is_medieval_manuscript': 'Medieval Manuscript (strict)',
+            'is_manuscript': 'Manuscript',
+            'is_medieval_manuscript': 'Medieval Manuscript',
         };
 
         function renderFeatureChart(features, totalCount) {
@@ -1749,6 +1990,12 @@
                 updateDashboard();
             }, FILTERS.lang, true);
         }
+        function renderLangNote(n) {
+            const el = document.getElementById('langNote');
+            if (!el) return;
+            el.classList.toggle('hidden', !n || VIEW_MODE === 'edition');
+            el.textContent = n ? `${n.toLocaleString()} document${n === 1 ? '' : 's'} without a detected language (too little text), not shown.` : '';
+        }
         function renderTimeChart(yearMap) {
             const data = Object.entries(yearMap)
                 .map(([y, v]) => ({
@@ -1775,7 +2022,7 @@
 
             // Say what the list is: which layer, and that non-highlighted places co-occur.
             const caption = document.getElementById('cityListCaption');
-            const geoFilter = FILTERS.city || FILTERS.country;
+            const geoFilter = FILTERS.city || FILTERS.country || (FILTERS.place && FILTERS.place.key);
             const unit = VIEW_MODE === 'document' ? 'documents' : 'editions';
             if (caption) {
                 caption.innerHTML = geoFilter
@@ -1794,7 +2041,7 @@
             list.appendChild(ul);
 
             entries.forEach(c => {
-                const isActive = FILTERS.city === c.name;
+                const isActive = FILTERS.city === c.name || (FILTERS.place && FILTERS.place.key === c.name);
                 const isMatch = isActive || (geoFilter && c.matched);
                 const baseClass = "flex items-center gap-2 cursor-pointer p-1 rounded transition-colors text-xs ";
                 const colorClass = isActive ? "bg-amber-100 border border-amber-400 shadow-sm"
@@ -1811,6 +2058,13 @@
                 const nameDiv = document.createElement("div");
                 nameDiv.className = "flex-1 min-w-0 font-medium truncate " + (isMatch ? "text-amber-900" : (geoFilter ? "text-gray-500" : "text-gray-700"));
                 nameDiv.innerText = c.name;
+                if (c.approximate) {
+                    const approx = document.createElement("span");
+                    approx.className = "ml-1 text-[9px] font-normal text-gray-400";
+                    approx.innerText = "≈ country";
+                    approx.title = "Exact location unknown: shown at the centre of " + (c.country || "the country");
+                    nameDiv.appendChild(approx);
+                }
                 row.appendChild(nameDiv);
 
                 // Single-color bar (matches Topics style)
@@ -1837,8 +2091,33 @@
             L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_2aq6_1_1525e2004869d5099678ffed', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             }).addTo(map);
-            cityClusters = L.markerClusterGroup();
+            // A cluster's number: distinct editions (edition mode) or places (document mode). The
+            // plugin's default counts markers, i.e. places, which read as editions/documents.
+            const clusterCount = (cluster) => {
+                const kids = cluster.getAllChildMarkers();
+                return VIEW_MODE === 'edition'
+                    ? new Set(kids.flatMap(m => m.options.eds || [])).size
+                    : kids.length;
+            };
+            cityClusters = L.markerClusterGroup({
+                iconCreateFunction: (cluster) => {
+                    const places = cluster.getChildCount();
+                    const size = places < 10 ? 'small' : places < 100 ? 'medium' : 'large';
+                    return L.divIcon({ html: `<div><span>${clusterCount(cluster).toLocaleString()}</span></div>`,
+                                       className: `marker-cluster marker-cluster-${size}`, iconSize: L.point(40, 40) });
+                },
+            });
+            cityClusters.on('clustermouseover', (e) => {
+                const places = e.layer.getChildCount();
+                const text = VIEW_MODE === 'edition'
+                    ? `${clusterCount(e.layer)} editions mention these ${places.toLocaleString()} places; zoom in for each place`
+                    : `${places.toLocaleString()} places; zoom in for their document counts`;
+                e.layer.bindTooltip(text, { direction: 'top' }).openTooltip();
+            });
             map.addLayer(cityClusters);
+            // Places that match the place filter are drawn outside the clusters, on top, so a selected
+            // place is visible at every zoom level.
+            matchLayer = L.featureGroup().addTo(map);
 
             // Fix for map visibility in flex containers
             setTimeout(() => {
@@ -1851,9 +2130,11 @@
                 updateDashboard();
             });
         }
+        let matchLayer = null;
         function updateMap(cityStats) {
             if (!cityClusters) return;
             cityClusters.clearLayers();
+            if (matchLayer) matchLayer.clearLayers();
 
             const entries = Object.entries(cityStats);
             let maxCount = 0;
@@ -1873,26 +2154,37 @@
 
                 let radius = 6;
 
-                const isMatch = (FILTERS.city || FILTERS.country) && stats.matched;
+                const isMatch = (FILTERS.city || FILTERS.country || FILTERS.place) && stats.matched;
                 const marker = L.circleMarker([coords.lat, coords.lng], {
-                    radius: isMatch ? 7 : radius,
+                    radius: isMatch ? 9 : radius,
+                    dashArray: stats.approximate ? '2 2' : null,
                     fillColor: isMatch ? '#f59e0b' : '#0ea5e9',
                     color: isMatch ? '#b45309' : '#0369a1',
                     weight: 1,
                     opacity: 1,
-                    fillOpacity: 0.8
+                    fillOpacity: 0.8,
+                    eds: stats.eds || null
                 });
 
                 let tooltip = `<b>${escapeHtml(cityName)}</b>: ${count} ${VIEW_MODE === 'document' ? 'documents' : 'editions'}`;
                 if (isMatch) tooltip += `<br/><span class="text-amber-700 text-[10px]">matches the place filter</span>`;
+                if (stats.approximate) tooltip += `<br/><span class="text-gray-500 text-[10px]">approximate: centre of ${escapeHtml(stats.country || 'the country')}</span>`;
                 if (stats.inferred > 0) {
                     tooltip += `<br/><span class="text-yellow-600 text-[10px]">(${stats.confirmed} confirmed, ${stats.inferred} inferred)</span>`;
                 }
 
                 marker.bindTooltip(tooltip);
                 marker.on('click', () => { toggleCity(cityName); });
-                cityClusters.addLayer(marker);
+                (isMatch && matchLayer ? matchLayer : cityClusters).addLayer(marker);
             }
+            if (matchLayer) {
+                matchLayer.eachLayer(m => m.bringToFront());
+                if (ZOOM_TO_MATCH && matchLayer.getLayers().length) {
+                    const b = matchLayer.getBounds();
+                    if (!map.getBounds().pad(-0.1).contains(b) || map.getZoom() < 5) map.flyToBounds(b.pad(0.5), { maxZoom: 8, duration: 0.6 });
+                }
+            }
+            ZOOM_TO_MATCH = false;
         }
 
         function handleBackgroundClick(e) {
@@ -2509,8 +2801,8 @@
             const tagSection = `
                 <section>
                     <div class="flex items-baseline justify-between mb-2">
-                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">TEI tag values${tagRows.length ? ` (${tagRows.length})` : ''}</h4>
-                        <span class="text-[11px] text-gray-500">Element content indexed from the XML</span>
+                        <h4 class="font-bold text-xs text-gray-700 uppercase tracking-wide">TEI tag values${tagRows.length ? ` (${doc.tagValuesTotal > tagRows.length ? `top ${tagRows.length} of ${doc.tagValuesTotal.toLocaleString()}` : tagRows.length})` : ''}</h4>
+                        <span class="text-[11px] text-gray-500">Indexed elements only (names, places, dates, titles, …), most frequent first</span>
                     </div>
                     ${tagRows.length === 0
                         ? `<div class="border border-dashed border-gray-200 rounded-lg px-4 py-6 text-center text-xs text-gray-500">${tagEmptyText}</div>`
@@ -2535,7 +2827,45 @@
                         </div>`}
                 </section>`;
 
-            bodyEl.innerHTML = `<div class="space-y-6">${metadataSection}${tagSection}</div>`;
+            // The full source file. Large files are shown in part (the browser would stall), with the
+            // whole file available as a download.
+            const XML_SHOW = 300000;
+            const xml = doc.xml || '';
+            const xmlSection = `
+                <section>
+                    <details id="docXmlDetails" class="border border-gray-200 rounded-lg">
+                        <summary class="cursor-pointer select-none px-4 py-2.5 flex items-baseline justify-between">
+                            <span class="font-bold text-xs text-gray-700 uppercase tracking-wide">Source XML</span>
+                            <span class="text-[11px] text-gray-500">${xml
+                                ? `${escapeHtml(doc.filePath || '')} · ${(new Blob([xml]).size / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB`
+                                : 'Not available here (the XML files are only on the local server)'}</span>
+                        </summary>
+                        ${xml ? `
+                        <div class="border-t border-gray-200">
+                            <div class="flex items-center justify-between px-4 py-1.5 bg-gray-50 text-[11px] text-gray-500">
+                                <span>${xml.length > XML_SHOW ? `Showing the first ${XML_SHOW.toLocaleString()} of ${xml.length.toLocaleString()} characters` : 'Complete file'}</span>
+                                <a id="docXmlDownload" class="text-sky-700 hover:underline" href="#">Download XML</a>
+                            </div>
+                            <pre id="docXmlPre" class="text-[11px] leading-snug font-mono whitespace-pre-wrap break-all px-4 py-3 max-h-[28rem] overflow-auto bg-white"></pre>
+                        </div>` : ''}
+                    </details>
+                </section>`;
+
+            bodyEl.innerHTML = `<div class="space-y-6">${metadataSection}${tagSection}${xmlSection}</div>`;
+            if (xml) {
+                const pre = document.getElementById('docXmlPre');
+                const details = document.getElementById('docXmlDetails');
+                details.addEventListener('toggle', () => {
+                    if (details.open && !pre.textContent) pre.textContent = xml.slice(0, XML_SHOW);
+                });
+                document.getElementById('docXmlDownload').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+                    const a = Object.assign(document.createElement('a'), { href: url, download: (doc.filePath || `${doc.name}.xml`).split('/').pop() });
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                });
+            }
         }
 
     </script>

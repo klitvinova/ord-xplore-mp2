@@ -64,7 +64,10 @@ export function ensureSchema() {
         `SELECT table_name || '.' || column_name AS col FROM information_schema.columns
           WHERE table_schema = current_schema()
             AND ((table_name = 'geolocations' AND column_name IN ('place_type', 'geo_correction'))
-              OR (table_name = 'editions' AND column_name IN ('display_name', 'edition_date_year')));`
+              OR (table_name = 'editions' AND column_name IN ('display_name', 'edition_date_year', 'publisher', 'description_source'))
+              OR (table_name = 'build_info' AND column_name = 'value')
+              OR (table_name = 'topics' AND column_name = 'lang')
+              OR (table_name = 'documents' AND column_name = 'file_path'));`
       );
       const columns = new Set(cols.rows.map((r) => r.col));
       return {

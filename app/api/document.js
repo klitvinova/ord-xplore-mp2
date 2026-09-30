@@ -48,8 +48,11 @@ export default async function handler(req, res) {
   }
 
   try {
+    // v2 databases store the XML path (relative to raw_documents/); older ones only the title.
+    const docSchema = await ensureSchema();
+    const fileCol = docSchema.hasColumn('documents', 'file_path') ? 'd.file_path' : 'NULL';
     const query = `
-      SELECT d.id, d.name, e.name as edition_name, e.description as edition_description
+      SELECT d.id, d.name, ${fileCol} AS file_path, e.name as edition_name, e.description as edition_description
       FROM documents d
       JOIN editions e ON d.edition_id = e.id
       WHERE d.id = $1;
@@ -63,13 +66,15 @@ export default async function handler(req, res) {
     const editionDir = path.join(RAW_DOCS_ROOT, doc.edition_name);
     
     // Find XML file
-    let filePath = path.join(editionDir, doc.name);
-    if (!fs.existsSync(filePath) && !filePath.endsWith('.xml')) {
+    let filePath = doc.file_path ? path.join(RAW_DOCS_ROOT, doc.file_path) : path.join(editionDir, doc.name || '');
+    if (!doc.file_path && !fs.existsSync(filePath) && !filePath.endsWith('.xml')) {
       filePath = path.join(editionDir, `${doc.name}.xml`);
     }
+    // never read outside raw_documents/
+    if (!path.resolve(filePath).startsWith(RAW_DOCS_ROOT + path.sep)) filePath = '';
 
     let xmlContent = '';
-    if (fs.existsSync(filePath)) {
+    if (filePath && fs.existsSync(filePath)) {
       xmlContent = fs.readFileSync(filePath, 'utf8');
     }
 
@@ -84,9 +89,12 @@ export default async function handler(req, res) {
     `;
     // document_tag_values comes from migration 006; older databases lack it.
     let tagValueRows = [];
+    let tagValuesTotal = 0;
     const schema = await ensureSchema();
     if (schema.has('document_tag_values')) {
       tagValueRows = (await pool.query(tagsQuery, [docId])).rows;
+      tagValuesTotal = (await pool.query(
+        'SELECT COUNT(DISTINCT (tag_name, value))::int AS n FROM document_tag_values WHERE document_id = $1', [docId])).rows[0].n;
     }
 
     // Fetch dates and places
@@ -122,7 +130,10 @@ export default async function handler(req, res) {
       places: metadata.places || [],
       languages: metadata.languages || [],
       topics: metadata.topics || [],
+      filePath: doc.file_path || null,
+      xmlAvailable: Boolean(xmlContent),
       tagValues: tagValueRows,
+      tagValuesTotal,
       tagValuesAvailable: schema.has('document_tag_values')
     });
 

@@ -1,243 +1,172 @@
-import { getPool, ensureSchema } from './_db.js';
+import { getPool, ensureSchema, applyCors, SIGNED_YEAR } from './_db.js';
 
-// Helper for CORS headers
-function applyCors(req, res, methods = 'GET,POST,OPTIONS') {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', methods);
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return true;
-  }
-  return false;
-}
+/**
+ * Dataset curation API (upload.html).
+ *
+ * GET  /api/manage                                  editions with coverage figures + summary
+ * GET  /api/manage?editionId=1&search=&limit=&offset=   documents of an edition (paged)
+ * GET  /api/manage?editionDetailsId=1               languages, characteristics, years, topics of an edition
+ * POST /api/manage { action: 'toggle_edition_exclusion' | 'toggle_document_exclusion', id, isExcluded }
+ * POST /api/manage { action: 'update_edition', id, display_name, description, website }
+ *
+ * Hiding never deletes anything: is_excluded only keeps the edition or
+ * document out of the Explorer.
+ */
+
+const MAX_LIMIT = 500;
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
-
+  let schema;
   try {
-    await ensureSchema(); // adds the is_excluded columns if missing
+    schema = await ensureSchema();
   } catch (e) {
     return res.status(500).json({ error: `Database unavailable: ${e.message}` });
   }
+  const col = (table, name, fallback = 'NULL') => (schema.hasColumn(table, name) ? `${table === 'editions' ? 'e' : 'd'}.${name}` : fallback);
   const client = await getPool().connect();
-
   try {
-    // --- GET METHOD: Retrieve list of editions or documents ---
     if (req.method === 'GET') {
-      const { editionId, documentId, editionDetailsId } = req.query || {};
+      const { editionId, editionDetailsId } = req.query || {};
 
-      // A. Retrieve specific document details (metadata facets)
-      if (documentId) {
-        const docId = parseInt(documentId);
-        
-        // Fetch document name
-        const docRes = await client.query('SELECT name FROM documents WHERE id = $1;', [docId]);
-        if (docRes.rows.length === 0) {
-          return res.status(404).json({ error: 'Document not found' });
-        }
-        const docName = docRes.rows[0].name;
-
-        // Fetch languages
-        const langRes = await client.query(
-          `SELECT l.iso_code as lang, dl.inference_type 
-           FROM document_languages dl 
-           JOIN languages l ON dl.language_id = l.id 
-           WHERE dl.document_id = $1;`,
-          [docId]
-        );
-        const language = langRes.rows[0]?.lang || 'unknown';
-        const languageInferred = langRes.rows[0]?.inference_type === 'inferred';
-
-        // Fetch dates
-        const dateRes = await client.query(
-          `SELECT te.year, dte.date_type 
-           FROM document_time_entities dte 
-           JOIN time_entities te ON dte.time_entity_id = te.id 
-           WHERE dte.document_id = $1;`,
-          [docId]
-        );
-        const dates = { creation: [], publication: [], contextual: [] };
-        dateRes.rows.forEach(r => {
-          if (r.date_type === 'creation') dates.creation.push(r.year);
-          else if (r.date_type === 'publication') dates.publication.push(r.year);
-          else if (r.date_type === 'contextual') dates.contextual.push(r.year);
-        });
-
-        // Fetch places
-        const geoRes = await client.query(
-          `SELECT g.name, dg.geo_type 
-           FROM document_geolocations dg 
-           JOIN geolocations g ON dg.geolocation_id = g.id 
-           WHERE dg.document_id = $1;`,
-          [docId]
-        );
-        const geolocations = { creation: [], publication: [], contextual: [] };
-        geoRes.rows.forEach(r => {
-          if (r.geo_type === 'creation') geolocations.creation.push(r.name);
-          else if (r.geo_type === 'publication') geolocations.publication.push(r.name);
-          else if (r.geo_type === 'contextual') geolocations.contextual.push(r.name);
-        });
-
-        // Fetch features
-        const featRes = await client.query(
-          `SELECT am.name 
-           FROM document_attributes da 
-           JOIN attributes_metadata am ON da.attribute_id = am.id 
-           WHERE da.document_id = $1;`,
-          [docId]
-        );
-        const features = featRes.rows.map(r => r.name);
-
-        // Fetch topics
-        const topRes = await client.query(
-          `SELECT topic_id as id, confidence 
-           FROM document_topics 
-           WHERE document_id = $1 
-           ORDER BY confidence DESC;`,
-          [docId]
-        );
-
-        // XML tag complexity
-        const tagCountRes = await client.query(
-          'SELECT COUNT(*) as count FROM document_tags WHERE document_id = $1;',
-          [docId]
-        );
-        const tagCount = parseInt(tagCountRes.rows[0]?.count || 0);
-
-        return res.status(200).json({
-          metadata: {
-            title: docName,
-            language,
-            languageInferred,
-            tags: tagCount,
-            dates,
-            geolocations,
-            features,
-            topics: topRes.rows
-          }
-        });
-      }
-
-      // B. Retrieve collection-level edition statistics
       if (editionDetailsId) {
-        const edId = parseInt(editionDetailsId);
-
-        // Languages distribution
-        const langRes = await client.query(
-          `SELECT l.iso_code as lang, COUNT(*) as count 
-           FROM document_languages dl 
-           JOIN languages l ON dl.language_id = l.id 
-           JOIN documents d ON dl.document_id = d.id 
-           WHERE d.edition_id = $1 
-           GROUP BY l.iso_code 
-           ORDER BY count DESC;`,
-          [edId]
-        );
-
-        // Features breakdown
-        const featRes = await client.query(
-          `SELECT am.name as key, COUNT(*) as count 
-           FROM document_attributes da 
-           JOIN attributes_metadata am ON da.attribute_id = am.id 
-           JOIN documents d ON da.document_id = d.id 
-           WHERE d.edition_id = $1 
-           GROUP BY am.name 
-           ORDER BY count DESC;`,
-          [edId]
-        );
-
-        // Year coverage
-        const yearRes = await client.query(
-          `SELECT MIN(te.year) as min_year, MAX(te.year) as max_year 
-           FROM document_time_entities dte 
-           JOIN time_entities te ON dte.time_entity_id = te.id 
-           JOIN documents d ON dte.document_id = d.id 
-           WHERE d.edition_id = $1;`,
-          [edId]
-        );
-
-        // Top topics
-        const topRes = await client.query(
-          `SELECT t.id, t.name, COUNT(*) as count 
-           FROM document_topics dt 
-           JOIN topics t ON dt.topic_id = t.id 
-           JOIN documents d ON dt.document_id = d.id 
-           WHERE d.edition_id = $1 
-           GROUP BY t.id, t.name 
-           ORDER BY count DESC 
-           LIMIT 5;`,
-          [edId]
-        );
-
-        return res.status(200).json({
-          languages: langRes.rows,
-          features: featRes.rows,
-          years: yearRes.rows[0] || {},
-          topics: topRes.rows
-        });
+        const id = parseInt(editionDetailsId, 10);
+        const [langs, feats, years, topics] = await Promise.all([
+          client.query(`SELECT l.iso_code AS lang, l.name, dl.inference_type AS inference, COUNT(*)::int AS count
+                          FROM document_languages dl JOIN languages l ON l.id = dl.language_id
+                          JOIN documents d ON d.id = dl.document_id
+                         WHERE d.edition_id = $1 GROUP BY 1, 2, 3 ORDER BY count DESC`, [id]),
+          client.query(`SELECT am.name AS key, COUNT(*)::int AS count FROM document_attributes da
+                          JOIN attributes_metadata am ON am.id = da.attribute_id JOIN documents d ON d.id = da.document_id
+                         WHERE d.edition_id = $1 GROUP BY 1 ORDER BY count DESC`, [id]),
+          client.query(`SELECT dt.date_type, MIN(${SIGNED_YEAR('t')}) AS min_year, MAX(${SIGNED_YEAR('t')}) AS max_year,
+                               COUNT(DISTINCT dt.document_id)::int AS documents
+                          FROM document_time_entities dt JOIN time_entities t ON t.id = dt.time_entity_id
+                          JOIN documents d ON d.id = dt.document_id
+                         WHERE d.edition_id = $1 GROUP BY 1`, [id]),
+          client.query(`SELECT t.id, t.name, COUNT(*)::int AS count FROM document_topics dt JOIN topics t ON t.id = dt.topic_id
+                          JOIN documents d ON d.id = dt.document_id WHERE d.edition_id = $1
+                         GROUP BY 1, 2 ORDER BY count DESC LIMIT 5`, [id]),
+        ]);
+        return res.status(200).json({ languages: langs.rows, features: feats.rows, years: years.rows, topics: topics.rows });
       }
 
-      // C. Standard list of documents under an edition
       if (editionId) {
-        const docsQuery = await client.query(
-          'SELECT id, name, is_excluded FROM documents WHERE edition_id = $1 ORDER BY name;',
-          [parseInt(editionId)]
-        );
-        return res.status(200).json({ documents: docsQuery.rows });
+        const id = parseInt(editionId, 10);
+        const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, MAX_LIMIT);
+        const offset = Math.max(parseInt(req.query.offset || '0', 10) || 0, 0);
+        const search = (req.query.search || '').trim();
+        const filePath = col('documents', 'file_path');
+        const params = [id];
+        let where = 'd.edition_id = $1';
+        if (search) {
+          params.push(`%${search}%`);
+          where += ` AND (d.name ILIKE $2 OR ${filePath === 'NULL' ? 'FALSE' : `${filePath} ILIKE $2`} OR CAST(d.id AS TEXT) = $3)`;
+          params.push(search);
+        }
+        const total = await client.query(`SELECT COUNT(*)::int AS n FROM documents d WHERE ${where}`, params);
+        const docs = await client.query(
+          `SELECT d.id, d.name, ${filePath} AS file_path, d.is_excluded,
+                  yr.year, yr.date_type AS year_type,
+                  (SELECT json_agg(json_build_object('code', l.iso_code, 'name', l.name) ORDER BY l.iso_code)
+                     FROM document_languages dl JOIN languages l ON l.id = dl.language_id
+                    WHERE dl.document_id = d.id AND l.iso_code NOT IN ('und', 'mul', 'zxx')) AS languages
+             FROM documents d
+             LEFT JOIN LATERAL (
+               SELECT ${SIGNED_YEAR('t')} AS year, dt.date_type FROM document_time_entities dt
+                 JOIN time_entities t ON t.id = dt.time_entity_id
+                WHERE dt.document_id = d.id
+                ORDER BY (dt.date_type = 'creation') DESC, (dt.date_type = 'publication') DESC LIMIT 1) yr ON TRUE
+            WHERE ${where}
+            ORDER BY ${filePath === 'NULL' ? 'd.name' : filePath}, d.id
+            LIMIT ${limit} OFFSET ${offset}`, params);
+        return res.status(200).json({ documents: docs.rows, total: total.rows[0].n, limit, offset });
       }
 
-      // D. Default list of editions
-      const edsQuery = await client.query(
-        'SELECT id, name, description, website, number_documents, is_excluded FROM editions ORDER BY name;'
-      );
-      return res.status(200).json({ editions: edsQuery.rows });
+      const eds = await client.query(`
+        WITH docs AS (SELECT edition_id, COUNT(*)::int AS n, (COUNT(*) FILTER (WHERE is_excluded))::int AS hidden
+                        FROM documents GROUP BY 1),
+             yrs AS (SELECT d.edition_id,
+                            MIN(${SIGNED_YEAR('t')}) FILTER (WHERE dt.date_type IN ('creation', 'publication')) AS y0,
+                            MAX(${SIGNED_YEAR('t')}) FILTER (WHERE dt.date_type IN ('creation', 'publication')) AS y1,
+                            MIN(${SIGNED_YEAR('t')}) FILTER (WHERE dt.date_type = 'contextual') AS c0,
+                            MAX(${SIGNED_YEAR('t')}) FILTER (WHERE dt.date_type = 'contextual') AS c1
+                       FROM document_time_entities dt JOIN time_entities t ON t.id = dt.time_entity_id
+                       JOIN documents d ON d.id = dt.document_id GROUP BY 1),
+             lang AS (SELECT edition_id, json_agg(json_build_object('code', iso_code, 'name', name, 'n', n) ORDER BY n DESC) AS langs
+                        FROM (SELECT d.edition_id, l.iso_code, l.name, COUNT(*)::int AS n,
+                                     ROW_NUMBER() OVER (PARTITION BY d.edition_id ORDER BY COUNT(*) DESC) AS rn
+                                FROM document_languages dl JOIN languages l ON l.id = dl.language_id
+                                JOIN documents d ON d.id = dl.document_id
+                               WHERE l.iso_code NOT IN ('und', 'mul', 'zxx') GROUP BY 1, 2, 3) x
+                       WHERE rn <= 3 GROUP BY 1),
+             geo AS (SELECT d.edition_id, COUNT(*)::int AS links, (COUNT(*) FILTER (WHERE g.geometry IS NOT NULL))::int AS located
+                       FROM document_geolocations dg JOIN documents d ON d.id = dg.document_id
+                       JOIN geolocations g ON g.id = dg.geolocation_id GROUP BY 1)
+        SELECT e.id, e.name, ${col('editions', 'display_name')} AS display_name, e.description, e.website,
+               ${col('editions', 'publisher')} AS publisher, ${col('editions', 'description_source')} AS description_source,
+               ${col('editions', 'edition_date_year')} AS edition_date_year, e.is_excluded,
+               COALESCE(docs.n, 0) AS documents, COALESCE(docs.hidden, 0) AS hidden_documents,
+               yrs.y0 AS year_min, yrs.y1 AS year_max, yrs.c0 AS mentioned_min, yrs.c1 AS mentioned_max, COALESCE(lang.langs, '[]'::json) AS languages,
+               COALESCE(geo.links, 0) AS place_links, COALESCE(geo.located, 0) AS located_links
+          FROM editions e
+          LEFT JOIN docs ON docs.edition_id = e.id LEFT JOIN yrs ON yrs.edition_id = e.id
+          LEFT JOIN lang ON lang.edition_id = e.id LEFT JOIN geo ON geo.edition_id = e.id
+         ORDER BY lower(COALESCE(${col('editions', 'display_name')}, e.name))`);
+      let build = null;
+      if (schema.hasColumn('build_info', 'value')) {
+        const b = await client.query(`SELECT value FROM build_info WHERE key = 'run'`);
+        build = b.rows[0]?.value || null;
+      }
+      const rows = eds.rows;
+      const visible = rows.filter((r) => !r.is_excluded);
+      return res.status(200).json({
+        editions: rows,
+        summary: {
+          editions: rows.length,
+          hiddenEditions: rows.length - visible.length,
+          documents: rows.reduce((s, r) => s + r.documents, 0),
+          visibleDocuments: visible.reduce((s, r) => s + r.documents - r.hidden_documents, 0),
+          build,
+        },
+      });
     }
 
-    // --- POST METHOD: Toggle exclusion of editions or documents ---
     if (req.method === 'POST') {
-      const { action, id, isExcluded } = req.body || {};
+      const { action, id } = req.body || {};
+      if (!action || !id) return res.status(400).json({ error: 'action and id are required.' });
 
-      if (!action || !id || isExcluded === undefined) {
-        return res.status(400).json({ error: 'Missing required parameters: action, id, and isExcluded' });
+      if (action === 'toggle_edition_exclusion' || action === 'toggle_document_exclusion') {
+        const table = action === 'toggle_edition_exclusion' ? 'editions' : 'documents';
+        const r = await client.query(`UPDATE ${table} SET is_excluded = $2 WHERE id = $1 RETURNING id`,
+          [parseInt(id, 10), !!req.body.isExcluded]);
+        if (!r.rowCount) return res.status(404).json({ error: `${table.slice(0, -1)} ${id} not found` });
+        return res.status(200).json({ success: true });
       }
 
-      await client.query('BEGIN');
-
-      if (action === 'toggle_edition_exclusion') {
-        // Toggle the is_excluded column for the edition
-        await client.query('UPDATE editions SET is_excluded = $2 WHERE id = $1;', [parseInt(id), !!isExcluded]);
-        await client.query('COMMIT');
-        return res.status(200).json({
-          success: true,
-          message: `Edition ${id} exclusion set to ${isExcluded}.`
-        });
+      if (action === 'update_edition') {
+        const displayName = String(req.body.display_name ?? '').trim().slice(0, 300);
+        const description = String(req.body.description ?? '').trim().slice(0, 4000);
+        const website = String(req.body.website ?? '').trim().slice(0, 500);
+        if (website && !/^https?:\/\/\S+$/i.test(website)) {
+          return res.status(400).json({ error: 'The website must start with http:// or https://' });
+        }
+        const sets = ['description = $2', 'website = $3'];
+        const params = [parseInt(id, 10), description, website];
+        if (schema.hasColumn('editions', 'display_name')) {
+          sets.push('display_name = $4');
+          params.push(displayName || null);
+        }
+        const r = await client.query(`UPDATE editions SET ${sets.join(', ')} WHERE id = $1 RETURNING id`, params);
+        if (!r.rowCount) return res.status(404).json({ error: `edition ${id} not found` });
+        return res.status(200).json({ success: true });
       }
-
-      if (action === 'toggle_document_exclusion') {
-        // Toggle the is_excluded column for the document
-        await client.query('UPDATE documents SET is_excluded = $2 WHERE id = $1;', [parseInt(id), !!isExcluded]);
-        await client.query('COMMIT');
-        return res.status(200).json({
-          success: true,
-          message: `Document ${id} exclusion set to ${isExcluded}.`
-        });
-      }
-
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Invalid action: ${action}` });
+      return res.status(400).json({ error: `Unknown action: ${action}` });
     }
-
     return res.status(405).json({ error: 'Method Not Allowed' });
-
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Management API error:', err);
-    return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
+    return res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
